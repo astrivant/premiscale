@@ -1,0 +1,21 @@
+dependencies:
+- name: strimzi-kafka-operator
+  repository: https://strimzi.io/charts/
+  version: 1.2.0
+- name: keda
+  repository: https://kedacore.github.io/charts
+  version: 2.20.2
+- name: dragonfly
+  repository: oci://ghcr.io/dragonflydb/dragonfly/helm
+  version: v1.40.0
+- name: premiscale-crds
+  repository: file://../premiscale-crds
+  version: 0.0.1
+- name: cluster-autoscaler
+  repository: https://kubernetes.github.io/autoscaler
+  version: 9.59.0
+- name: cloudnative-pg
+  repository: https://cloudnative-pg.github.io/charts
+  version: 0.29.0
+digest: sha256:7f5863b2a26c6a91a500acca85c6dd3214c602ac110739927dffe0fa7a229496
+generated: "2026-09-23T11:27:44.914164-04:00"

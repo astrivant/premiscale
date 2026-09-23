@@ -1,0 +1,134 @@
+{
+  "type": "object",
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "premiscale.com/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Host"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hypervisor address or DNS name."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "ssh",
+            "SSH",
+            "tls",
+            "TLS",
+            "http",
+            "HTTP",
+            "https",
+            "HTTPS"
+          ]
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 599940,
+          "default": 45
+        },
+        "user": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sshKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Private SSH key or an environment-variable reference expanded by the controller."
+        },
+        "hypervisor": {
+          "type": "string",
+          "enum": [
+            "esx",
+            "qemu"
+          ]
+        },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "memory": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "storage": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "cpu",
+            "memory",
+            "storage"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "address",
+        "port",
+        "protocol",
+        "hypervisor"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Host"
+}

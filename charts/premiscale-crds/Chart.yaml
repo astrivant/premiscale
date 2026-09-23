@@ -1,0 +1,7 @@
+apiVersion: v2
+name: premiscale-crds
+description: PremiScale configuration APIs and optional custom resource instances
+type: application
+version: 0.0.1
+appVersion: "0.0.1"
+kubeVersion: ">=1.29.0-0"

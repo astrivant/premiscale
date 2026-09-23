@@ -1,0 +1,7 @@
+<volume>
+    <name>template.qcow2</name>
+    <capacity>1073741824</capacity>
+    <target>
+        <format type="qcow2"/>
+    </target>
+</volume>

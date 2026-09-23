@@ -1,0 +1,73 @@
+{{- if .Values.kafka.enabled }}
+{{- if eq .Values.mode "singular" }}
+{{- fail "Managed Kafka is configured for ha or hha mode" }}
+{{- end }}
+{{- $namespace := .Values.global.namespace | default .Release.Namespace }}
+{{- $topic := dig "controller" "kafka" "topic" "premiscale.metrics" (include "premiscale.runtimeConfig" . | fromYaml) }}
+{{- $replicas := min 3 (int .Values.kafka.replicas) }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: {{ .Values.kafka.name }}-nodes
+  namespace: {{ $namespace }}
+  labels:
+    strimzi.io/cluster: {{ .Values.kafka.name }}
+spec:
+  replicas: {{ .Values.kafka.replicas }}
+  roles: [controller, broker]
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ .Values.kafka.storageSize }}
+        kraftMetadata: shared
+        deleteClaim: false
+        {{- with .Values.kafka.storageClass }}
+        class: {{ . | quote }}
+        {{- end }}
+  resources:
+    {{- toYaml .Values.kafka.resources | nindent 4 }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Values.kafka.name }}
+  namespace: {{ $namespace }}
+spec:
+  kafka:
+    version: {{ .Values.kafka.version | quote }}
+    listeners:
+      - name: internal
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      auto.create.topics.enable: false
+      default.replication.factor: {{ $replicas }}
+      min.insync.replicas: {{ max 1 (sub $replicas 1) }}
+      offsets.topic.replication.factor: {{ $replicas }}
+      transaction.state.log.replication.factor: {{ $replicas }}
+      transaction.state.log.min.isr: {{ max 1 (sub $replicas 1) }}
+  entityOperator:
+    topicOperator: {}
+---
+{{- range $suffix := list "" ".dead" }}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ printf "%s-%s" $.Values.kafka.name (ternary "metrics" "dead" (eq $suffix "")) }}
+  namespace: {{ $namespace }}
+  labels:
+    strimzi.io/cluster: {{ $.Values.kafka.name }}
+spec:
+  topicName: {{ printf "%s%s" $topic $suffix | quote }}
+  partitions: {{ $.Values.kafka.partitions }}
+  replicas: {{ $replicas }}
+  config:
+    retention.ms: {{ $.Values.kafka.retentionMilliseconds }}
+    cleanup.policy: delete
+    min.insync.replicas: {{ max 1 (sub $replicas 1) }}
+---
+{{- end }}
+{{- end }}

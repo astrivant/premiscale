@@ -1,0 +1,3 @@
+INSERT INTO volumes
+VALUES (%s, %s, %s, %s)
+ON CONFLICT DO NOTHING;

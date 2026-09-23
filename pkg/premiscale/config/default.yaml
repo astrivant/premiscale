@@ -1,0 +1,139 @@
+## @param version [string] The version of the configuration file.
+version: v1alpha1
+
+## @section Controller Configuration
+
+controller:
+  ## @param controller.pidFile [string, default: /opt/premiscale/premiscale.pid] Path to the file where the controller daemon process writes its PID.
+  pidFile: /opt/premiscale/premiscale.pid
+
+  ## @param controller.mode [string, default: standalone] The mode of the controller. Can be 'kubernetes' or 'standalone'. If 'standalone', the controller will not attempt to connect to a Kubernetes cluster autoscaler. If 'kubernetes', the controller will attempt to connect to the Kubernetes cluster autoscaler.
+  mode: standalone
+
+  # Redis-compatible Dragonfly Service. Credentials can come from a Kubernetes Secret.
+  # PREMISCALE_REDIS_URL and PREMISCALE_QUEUE_NAMESPACE supply defaults when omitted.
+  broker:
+    leaseSeconds: 60
+    blockMilliseconds: 1000
+    connectTimeout: 5
+    socketTimeout: 5
+
+  kubernetes:
+    ## @param controller.kubernetes.autoscalerPort [default: 8080] The port on which the Kubernetes autoscaler is listening.
+    autoscalerPort: 8085
+
+    ## @param controller.kubernetes.autoscalerHost [string, default: cluster-autoscaler] The host on which the Kubernetes autoscaler is running. See also the cluster autoscaler Helm chart: https://github.com/premiscale/kubernetes-autoscaler/tree/master/charts/cluster-autoscaler.
+    autoscalerHost: cluster-autoscaler
+
+    # External gRPC cloud-provider listener. Use 0.0.0.0 when exposed by a Service.
+    providerHost: 127.0.0.1
+    providerPort: 50051
+    clusterName: premiscale
+    # Persist this journal across controller restarts; run one active provider per journal.
+    stateFile: /opt/premiscale/autoscaler.db
+    # Optional server TLS certificate, key, and client CA for mutual TLS.
+    # providerCert: /etc/premiscale/tls/tls.crt
+    # providerKey: /etc/premiscale/tls/tls.key
+    # clientCA: /etc/premiscale/tls/ca.crt
+
+  ## @section Healthcheck Configuration
+
+  ## @param controller.healthcheck [object] Configure the healthcheck endpoint for the controller.
+  healthcheck:
+    ## @param controller.healthcheck.host [string, default: 127.0.0.1] The host to bind the healthcheck endpoint to.
+    host: 127.0.0.1
+
+    ## @param controller.healthcheck.port [default: 8085] The port to bind the healthcheck endpoint to.
+    port: 8085
+
+  ## @section Database Configuration
+
+  databases:
+    ## @param controller.databases.maxHostConnectionThreads [default: 10] Maximum simultaneous host connections per collection subprocess; each available CPU has one subprocess.
+    maxHostConnectionThreads: 10
+
+    ## @param controller.databases.hostConnectionQueueSize [default: 10] Maximum outstanding host futures per collection subprocess. Defaults to the same value as 'controller.databases.maxHostConnectionThreads'.
+    # hostConnectionQueueSize: 10
+
+    ## @param controller.databases.collectionInterval [default: 60] How often the agent retrieves state from all of the connected hosts.
+    collectionInterval: 60
+
+    ## @param controller.databases.hostConnectionTimeout [default: 60] How long to wait for a connection to a host before timing out.
+    hostConnectionTimeout: 60
+
+    state:
+      ## @param controller.databases.state.type [string, default: memory] The type of database to use for storing state. Can be 'mysql' or 'sqlite' or 'memory'.
+      type: memory
+
+    timeseries:
+      ## @param controller.databases.timeseries.type [string, default: memory] The type of database to use for storing time series data. Currently supports 'memory'.
+      type: memory
+
+      ## @param controller.databases.timeseries.dbfile [string, default: /opt/premiscale/timeseries.db] If using the 'memory' type, the path to the file where the time series data is stored as a CSV format.
+      # dbfile: /opt/premiscale/timeseries.csv
+
+      ## @param controller.databases.timeseries.retention [default: 300] How long to keep time series data in the database.
+      retention: 300
+
+    ## @param controller.databases.publishers [object] Additional destinations with independent broker queues. The timeseries settings above supply the primary publisher.
+    publishers: {}
+    # publishers:
+    #   postgresql:
+    #     type: postgresql
+    #     dsn: $PREMISCALE_METRICS_POSTGRES_DSN
+    #     retention: 86400
+    #     connectTimeout: 5
+    #     statementTimeout: 10000
+
+  ## @section Platform Configuration
+
+  ## @param controller.platform [object] Configure the platform
+  platform:
+    ## @param controller.platform.actionsQueueMax [default: 0] The maximum number of inbound actions from the platform to queue up before dropping them. 0 means no limit.
+    actionsQueueMaxSize: 0
+
+    ## @param controller.platform.domain [string, default: $PREMISCALE_PLATFORM] The domain of the platform.
+    domain: $PREMISCALE_PLATFORM
+
+    ## @param controller.platform.token [string, default: $PREMISCALE_TOKEN] The token to use to authenticate with the platform.
+    token: $PREMISCALE_TOKEN
+
+    ## @param controller.platform.certificates [object] For local-only testing, you can provide self-signed certificates to the controller for connection to the platform services.
+    certificates:
+      ## @param controller.platform.certificates.path [string, default: /opt/premiscale/certs] Path to a directory containing the controller's certificates.
+      path: $PREMISCALE_CACERT
+
+  ## @section Reconciliation Configuration
+
+  reconciliation:
+    ## @param controller.reconciliation.interval [default: 60] How often the controller reconciles the state of the ASGs. The controller collects time series and state in separate databases and queues up actions for autoscaling groups.
+    interval: 60
+
+    collection:
+      ## @param controller.reconciliation.collection.minThreads [default: 1] Minimum threads per nonempty host partition.
+      minThreads: 1
+      ## @param controller.reconciliation.collection.initialThreads [default: 1] Initial concurrency before throughput feedback; must not exceed maxHostConnectionThreads.
+      initialThreads: 1
+      ## @param controller.reconciliation.collection.targetThroughput [number] Optional successful hosts per second per worker; defaults to partition size divided by collectionInterval.
+      # targetThroughput: 1.0
+      ## @param controller.reconciliation.collection.proportionalGain [default: 1.0] Proportional gain applied to relative throughput error.
+      proportionalGain: 1.0
+      ## @param controller.reconciliation.collection.integralGain [default: 0.1] Integral gain applied to relative error accumulated over seconds.
+      integralGain: 0.1
+      ## @param controller.reconciliation.collection.derivativeGain [default: 0.05] Derivative gain applied to relative error change per second.
+      derivativeGain: 0.05
+      ## @param controller.reconciliation.collection.smoothing [default: 0.3] Weight of the latest throughput measurement, greater than zero and at most one.
+      smoothing: 0.3
+      ## @param controller.reconciliation.collection.deadband [default: 0.1] Relative error tolerance before changing threads, from zero to less than one.
+      deadband: 0.1
+      ## @param controller.reconciliation.collection.maxStep [default: 2] Maximum thread-count change per collection pass.
+      maxStep: 2
+
+  ## @section Autoscaling Configuration
+
+  autoscale:
+    ## @param controller.autoscale.hosts [array] Groups of hosts to assign to ASGs.
+    hosts: []
+
+    ## @param controller.autoscale.groups [object] Specify and configure autoscaling groups on the hosts above.
+    groups: {}

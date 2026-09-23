@@ -1,155 +1,104 @@
-minimum_pre_commit_version: 3.0.4
-fail_fast: true
-
-default_stages:
-  - commit
-  - manual
+default_language_version:
+  python: python3.14
 
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+  - repo: https://github.com/PyCQA/pydocstyle
+    rev: 6.3.0
     hooks:
-      - id: trailing-whitespace
-      - id: check-added-large-files
-        args: [--maxkb=10000, --enforce-all]
-      - id: check-executables-have-shebangs
-      - id: check-shebang-scripts-are-executable
-      - id: mixed-line-ending
+      - id: pydocstyle
+        args: [--config=pyproject.toml]
+        files: ^(pkg|scripts|integrations)/.*\.py$
+        exclude: _pb2(_grpc)?\.py$
+
+  - repo: https://github.com/jsh9/pydoclint
+    rev: 0.9.1
+    hooks:
+      - id: pydoclint
+        args: [--config=pyproject.toml]
+        files: ^(pkg|scripts|integrations)/.*\.py$
+        exclude: _pb2(_grpc)?\.py$
+
+  - repo: https://github.com/bitnami/readme-generator-for-helm
+    rev: 4d29f59abac6aeed6fbc2467e24fc17560057bcb # 3.0.1
+    hooks:
+      - id: helm-readme-generator
+        name: PremiScale chart README
+        alias: premiscale-readme
+        language_version: 24.14.0
+        args: [--readme=charts/premiscale/README.md, --values=charts/premiscale/values.yaml]
+        files: ^(charts/premiscale/(README\.md|values\.yaml)|\.pre-commit-config\.yaml)$
+        always_run: false
+        pass_filenames: false
+      - id: helm-readme-generator
+        name: PremiScale CRDs chart README
+        alias: premiscale-crds-readme
+        language_version: 24.14.0
+        args: [--readme=charts/premiscale-crds/README.md, --values=charts/premiscale-crds/values.yaml]
+        files: ^(charts/premiscale-crds/(README\.md|values\.yaml)|\.pre-commit-config\.yaml)$
+        always_run: false
+        pass_filenames: false
 
   - repo: local
     hooks:
-      - id: mypy
-        language: script
-        name: mypy
-        entry: /usr/bin/env poetry run mypy
-        args:
-          - --non-interactive
-          - --install-types
-          - --config-file=pyproject.toml
-        files: src/
-        types:
-          - python
-      - id: pylint
-        language: script
-        name: pylint
-        entry: /usr/bin/env poetry run pylint
-        args: []
-        files: src/
-        types:
-          - python
-      - id: cog
-        language: script
-        name: cog
-        entry: /usr/bin/env poetry run cog --check -r -c -U ./src/premiscale/config/docs/README.md
-        args: []
-        files: ^(src/premiscale/config/docs/README.md|src/premiscale/controller/cli.py)$
-        types:
-          - markdown
-        # additional_dependencies:
-        #   - cog
-      # - id: pdoc
-      #   language: script
-      #   name: pdoc
-      #   entry: /usr/bin/env poetry run pdoc
-      #   args:
-      #     - -d
-      #     - google
-      #     - --include-undocumented
-      #     - --math
-      #     - --logo
-      #     - 'https://avatars.githubusercontent.com/u/120519034'
-      #     - --logo-link
-      #     - 'https://premiscale.com'
-      #     - -o
-      #     - ./docs
-      #     - src/premiscale/
-      #   files: src/premiscale/
-      #   types:
-      #     - python
-
-  # Abuse the helm-readme-generator to generate READMEs for the CRDs and operator.
-  - repo: https://github.com/bitnami/readme-generator-for-helm
-    rev: 2.6.1
-    hooks:
-      - id: helm-readme-generator
-        name: controller default config docs generator
-        pass_filenames: false
-        always_run: true
-        # As new default configs are added and the versions bumped, we should be changing the '--readme' pointer.
-        args:
-          - --readme=src/premiscale/config/docs/default.md
-          - --values=src/premiscale/config/default.yaml
-      - id: helm-readme-generator
-        name: controller-helm-chart-schema-generator
-        pass_filenames: false
-        always_run: true
-        args:
-          - --readme=helm/premiscale/README.md
-          - --values=helm/premiscale/values.yaml
-          - --schema=helm/premiscale/values.schema.json
-
-  - repo: https://github.com/jumanjihouse/pre-commit-hooks
-    rev: 3.0.0
-    hooks:
-      - id: shellcheck
-        args:
-          - -x
-
-  - repo: https://github.com/bjd2385/circleci-config-pre-commit-hook
-    rev: v1.1.2
-    hooks:
-      - id: circleci-config-validate
-
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.1-beta
-    hooks:
-      - id: hadolint
-        args:
-          - Dockerfile
-          - --config
-          - .github/.hadolint.yaml
-
-  # - repo: https://github.com/k-ogawa-1988/yamale-pre-commit
-  #   rev: v0.0.2
-  #   hooks:
-  #     - id: yamale-validate
-  #       args:
-  #         - conf/schema.yaml
-
-  # - repo: https://github.com/gruntwork-io/pre-commit
-  #   rev: v0.1.22
-  #   hooks:
-  #     - id: helmlint
-
-  - repo: https://github.com/jsh9/pydoclint
-    rev: 0.4.2
-    hooks:
-      - id: pydoclint
-        args:
-          - --style=google
-          - --config=pyproject.toml
-
-  - repo: https://github.com/python-poetry/poetry
-    rev: 1.5.0
-    hooks:
       - id: poetry-check
-      - id: poetry-lock
-      - id: poetry-export
-        args: ["-f", "requirements.txt", "-o", "requirements.txt"]
+        name: Poetry metadata and lock
+        entry: poetry check --lock
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|poetry\.lock|\.pre-commit-config\.yaml)$
 
-  - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.13
+      - id: schema-artifacts
+        name: Generated configuration schemas
+        entry: bash scripts/validation/python.sh scripts/schemas/generate-config-schemas.py --check
+        language: system
+        pass_filenames: false
+        files: ^(charts/premiscale-crds/(crds/|schemas/|values\.schema\.json$)|charts/premiscale/values\.schema\.json$|pkg/premiscale/config/schemas/|scripts/schemas/|\.pre-commit-config\.yaml$)
+
+      - id: controller-config
+        name: Controller configuration examples
+        entry: bash scripts/validation/python.sh scripts/validation/check-config.py
+        language: system
+        pass_filenames: false
+        files: ^(pkg/premiscale/(config/|schemas/)|pkg/tests/data/config/|\.config/(minikube|keda)/controller\.yaml$|charts/premiscale-crds/crds/|scripts/validation/check-config\.py$|\.pre-commit-config\.yaml$)
+
+      - id: docstring-layout
+        name: Required multiline docstrings
+        entry: bash scripts/validation/python.sh scripts/validation/check-docstrings.py
+        language: system
+        types: [python]
+        files: ^(pkg|scripts|integrations)/.*\.py$
+        exclude: _pb2(_grpc)?\.py$
+
+      - id: shellcheck
+        name: ShellCheck
+        entry: shellcheck --external-sources
+        language: system
+        types: [shell]
+
+      - id: shfmt
+        name: Shell formatting
+        entry: shfmt -d -i 4 -ci -sr
+        language: system
+        types: [shell]
+
+      - id: pylint
+        name: Pylint
+        entry: bash scripts/validation/python.sh -m pylint --rcfile=pyproject.toml pkg
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: ^(pkg/.*\.py|pyproject\.toml|poetry\.lock|\.pre-commit-config\.yaml)$
+        exclude: _pb2(_grpc)?\.py$
+
+      - id: mypy
+        name: mypy
+        entry: bash scripts/validation/python.sh -m mypy --config-file pyproject.toml pkg
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: ^(pkg/.*\.py|pyproject\.toml|poetry\.lock|\.pre-commit-config\.yaml)$
+
+  - repo: meta
     hooks:
-      - id: validate-pyproject
-
-  # - repo: https://github.com/charliermarsh/ruff-pre-commit
-  #   rev: v0.0.237
-  #   hooks:
-  #     - id: ruff
-  #       args: [--fix]
-  #       exclude: ^resources
-
-  - repo: https://github.com/premiscale/pre-commit-hooks
-    rev: v0.0.9
-    hooks:
-    - id: msg-issue-prefix
+      - id: check-hooks-apply
+      - id: check-useless-excludes

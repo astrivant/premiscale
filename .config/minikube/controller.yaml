@@ -1,0 +1,37 @@
+version: v1alpha1
+controller:
+  mode: kubernetes-external-metrics
+  pidFile: /var/lib/premiscale/premiscale.pid
+  healthcheck:
+    host: 0.0.0.0
+    port: 8085
+  kubernetes:
+    autoscalerHost: premiscale-externalgrpc-cluster-autoscaler
+    autoscalerPort: 8085
+    providerHost: 0.0.0.0
+    providerPort: 50051
+    clusterName: minikube
+    stateFile: /var/lib/premiscale/autoscaler.db
+  databases:
+    collectionInterval: 60
+    hostConnectionTimeout: 10
+    maxHostConnectionThreads: 2
+    state:
+      type: memory
+      dbfile: /var/lib/premiscale/state.db
+    timeseries:
+      type: memory
+      retention: 300
+      dbfile: /var/lib/premiscale/timeseries.csv
+  platform:
+    domain: $PREMISCALE_PLATFORM
+    token: $PREMISCALE_TOKEN
+    certificates:
+      path: $PREMISCALE_CACERT
+    actionsQueueMaxSize: 0
+  reconciliation:
+    interval: 60
+  autoscale:
+    # Local smoke tests exercise the real provider without creating external VMs.
+    hosts: []
+    groups: {}

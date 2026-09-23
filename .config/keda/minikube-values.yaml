@@ -1,0 +1,81 @@
+premiscale:
+  mode: hha
+  strimzi-kafka-operator:
+    enabled: true
+  kafka:
+    enabled: true
+# Main chart overrides, including the complete runtime configuration.
+  keda:
+    enabled: true
+  configMap:
+    enabled: true
+  autoscaling:
+    enabled: true
+    publishers:
+      postgresql:
+        maxReplicaCount: 4
+        connectionsPerReplica: 2
+  controller:
+    extraEnv:
+    - name: PREMISCALE_POSTGRES_DSN
+      valueFrom:
+        secretKeyRef:
+          name: premiscale-postgresql
+          key: dsn
+    - name: PREMISCALE_JOURNAL_DSN
+      valueFrom:
+        secretKeyRef:
+          name: premiscale-postgresql
+          key: journal-dsn
+    - name: PREMISCALE_KAFKA_BOOTSTRAP_SERVERS
+      value: premiscale-kafka-kafka-bootstrap:9092
+# Complete typed Helm configuration; DSNs remain Secret-backed environment references.
+  config:
+    version: v1alpha1
+    controller:
+      mode: kubernetes
+      pidFile: /var/lib/premiscale/premiscale.pid
+      healthcheck:
+        host: 0.0.0.0
+        port: 8085
+        apiPort: 9090
+      kubernetes:
+        autoscalerHost: premiscale-externalgrpc-cluster-autoscaler
+        autoscalerPort: 8085
+        providerHost: 0.0.0.0
+        providerPort: 50051
+        clusterName: minikube
+        stateDsn: ${PREMISCALE_JOURNAL_DSN}
+      kafka:
+        enabled: true
+        bootstrapServers: ${PREMISCALE_KAFKA_BOOTSTRAP_SERVERS}
+        topic: premiscale.metrics
+      databases:
+        collectionInterval: 60
+        hostConnectionTimeout: 10
+        maxHostConnectionThreads: 16
+        state:
+          type: memory
+          dbfile: /var/lib/premiscale/state.db
+        timeseries:
+          type: memory
+          retention: 300
+        publishers:
+          postgresql:
+            type: postgresql
+            dsn: ${PREMISCALE_POSTGRES_DSN}
+            retention: 86400
+      platform:
+        domain: $PREMISCALE_PLATFORM
+        token: $PREMISCALE_TOKEN
+        certificates:
+          path: $PREMISCALE_CACERT
+        actionsQueueMaxSize: 0
+      reconciliation:
+        interval: 60
+      autoscale:
+        hosts: []
+        groups: {}
+  deployment:
+    extraVolumes: []
+    extraVolumeMounts: []

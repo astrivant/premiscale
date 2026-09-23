@@ -4,4 +4,4 @@
 POD="${1:-premiscale}"
 
 docker exec -it "$POD" ps -ef --forest
-#kubectl exec -it "$POD" -- /bin/bash -c 'ps -ef --forest'
+#kubectl exec -it "$POD" -- ps -ef --forest

@@ -1,0 +1,588 @@
+## @section Deployment composition
+
+## @param mode Composition: singular (one container), ha (replicated consolidated containers), or hha (separate controller, collector, and publisher Deployments).
+mode: singular
+
+## @section Runtime configuration
+
+# Mirrors the complete runtime YAML schema, including all backend and PID settings.
+# Keep credentials in Secrets and reference their environment variables here.
+## @param config [object] Complete typed runtime configuration; validated against the CRD-derived schema.
+config:
+  version: v1alpha1
+  controller:
+    pidFile: /opt/premiscale/premiscale.pid
+    mode: kubernetes
+    broker:
+      leaseSeconds: 60
+      blockMilliseconds: 1000
+      connectTimeout: 5
+      socketTimeout: 5
+      caFile: ''
+    kubernetes:
+      autoscalerPort: 8085
+      autoscalerHost: cluster-autoscaler
+      providerHost: 0.0.0.0
+      providerPort: 50051
+      clusterName: premiscale
+      stateFile: /opt/premiscale/autoscaler.db
+      stateDsn: ''
+      providerCert: ''
+      providerKey: ''
+      clientCA: ''
+    healthcheck:
+      host: 0.0.0.0
+      port: 8085
+      apiPort: 9090
+      stateDirectory: /run/premiscale
+    databases:
+      maxHostConnectionThreads: 10
+      collectionInterval: 60
+      hostConnectionTimeout: 60
+      state:
+        type: memory
+      timeseries:
+        type: memory
+        retention: 300
+      publishers: {}
+    platform:
+      actionsQueueMaxSize: 0
+      domain: $PREMISCALE_PLATFORM
+      token: $PREMISCALE_TOKEN
+      certificates:
+        path: $PREMISCALE_CACERT
+    reconciliation:
+      interval: 60
+      collection:
+        minThreads: 1
+        initialThreads: 1
+        proportionalGain: 1.0
+        integralGain: 0.1
+        derivativeGain: 0.05
+        smoothing: 0.3
+        deadband: 0.1
+        maxStep: 2
+    autoscale:
+      hosts: []
+      groups: {}
+    kafka:
+      enabled: false
+      bootstrapServers: ''
+      topic: premiscale.metrics
+      options: {}
+
+## @section Configuration reloads
+
+reload:
+  ## @param reload.enabled Annotate all PremiScale Deployments for an installed Stakater Reloader.
+  enabled: true
+  ## @param reload.secrets Also reload when Secrets referenced by each pod change.
+  secrets: true
+
+## @section Rollout protection
+
+rollouts:
+  ## @param rollouts.controller [object] HA controller rolling-update bounds and readiness stabilization; singular always uses Recreate.
+  controller: {maxSurge: 0, maxUnavailable: 1, minReadySeconds: 10}
+  ## @param rollouts.workers [object] Worker rolling-update bounds and readiness stabilization.
+  workers: {maxSurge: 1, maxUnavailable: 0, minReadySeconds: 10}
+
+disruptionBudgets:
+  ## @param disruptionBudgets.controller [object] Keep an available controller during voluntary evictions; singular maintenance requires disabling this budget.
+  controller: {enabled: true, minAvailable: 1, unhealthyPodEvictionPolicy: AlwaysAllow}
+  ## @param disruptionBudgets.collectors [object] Limit voluntary host-collector disruption independently of publishers.
+  collectors: {enabled: true, maxUnavailable: 1, unhealthyPodEvictionPolicy: AlwaysAllow}
+  ## @param disruptionBudgets.publishers [object] Apply a separate disruption budget to each database publisher Deployment.
+  publishers: {enabled: true, maxUnavailable: 1, unhealthyPodEvictionPolicy: AlwaysAllow}
+
+## @section Pod placement
+
+scheduling:
+  ## @param scheduling.controller [object] HA controllers require separate nodes; spread across nodes and prefer separate zones. Extra affinity is merged with generated anti-affinity.
+  controller:
+    separateNodes: true
+    preferSeparateNodes: false
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints:
+      - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: DoNotSchedule}
+      - {maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway}
+  ## @param scheduling.workers [object] Common worker placement; spread each pool and prefer nodes with fewer PremiScale workers overall.
+  workers:
+    separateNodes: false
+    preferSeparateNodes: true
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints:
+      - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway}
+      - {maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway}
+  ## @param scheduling.collectors [object] Host-collection placement overrides, such as NIC-oriented node labels.
+  collectors: {}
+  ## @param scheduling.publishers [object] Database-publication placement overrides.
+  publishers: {}
+
+## @section Kafka
+
+strimzi-kafka-operator:
+  ## @param strimzi-kafka-operator.enabled Install Strimzi 1.2.0 when the cluster does not already have the operator.
+  enabled: false
+
+kafka:
+  ## @param kafka.enabled Create a Strimzi Kafka cluster and metrics/dead-letter topics. HA modes also support external Kafka.
+  enabled: false
+  ## @param kafka.name Kafka cluster name, used by bootstrap Service discovery.
+  name: premiscale-kafka
+  ## @param kafka.version Kafka version supported by the pinned Strimzi operator.
+  version: 4.3.1
+  ## @param kafka.replicas Broker/controller nodes; three provide the normal quorum.
+  replicas: 3
+  ## @param kafka.storageSize Persistent storage per Kafka node.
+  storageSize: 10Gi
+  ## @param kafka.storageClass Optional storage class for Kafka PVCs.
+  storageClass: ""
+  ## @param kafka.partitions Metrics topic partitions; this bounds active publication consumers per destination.
+  partitions: 16
+  ## @param kafka.retentionMilliseconds Retain metrics for replay and independent database recovery.
+  retentionMilliseconds: 604800000
+  ## @param kafka.resources [object] Resources per Kafka broker/controller node.
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: 2, memory: 2Gi}
+
+## @section Global Configuration
+
+global:
+  image:
+    ## @param global.image.registry [string, default: docker.io] The global docker registry for all of the image.
+    registry: docker.io
+
+    ## @param global.image.pullSecrets [array] Container registry pull secrets applied to every container image.
+    pullSecrets: []
+
+
+## @section Controller Deployment
+
+deployment:
+  ## @param deployment.command [array] Container command; development images can prepend poetry run before premiscale.
+  command: [/usr/bin/tini, --, premiscale]
+
+  ## @param deployment.terminationGracePeriodSeconds [default: 30] Allow the controller's 10-second cleanup and 5-second forced shutdown to finish.
+  terminationGracePeriodSeconds: 30
+
+  # The SQLite provider journal requires one active controller during upgrades.
+  strategy:
+    ## @param deployment.strategy.type Deployment update strategy; Recreate prevents overlapping provider journal writers.
+    type: Recreate
+
+  ## @param deployment.extraVolumes [array] Additional volumes, including persistent provider storage.
+  extraVolumes: []
+
+  ## @param deployment.extraVolumeMounts [array] Additional mounts in the controller container.
+  extraVolumeMounts: []
+
+  image:
+    ## @param deployment.image.name [string, default: premiscale/premiscale] The name of the controller image.
+    name: premiscale/premiscale
+
+    ## @param deployment.image.tag [string, default: 0.0.1] The tag of the controller image.
+    tag: 0.0.1
+
+    ## @param deployment.image.pullPolicy [string, default: Always] The pull policy of the controller image.
+    pullPolicy: Always
+
+    ## @param deployment.image.pullSecrets [array] Container registry pull secrets that only pertain to this container image.
+    pullSecrets: []
+
+  resources:
+    requests:
+      ## @param deployment.resources.requests.cpu [default: 0.5] The CPU request for the controller container.
+      cpu: 0.5
+
+      ## @param deployment.resources.requests.memory [default: 1Gi] The memory request for the controller container.
+      memory: 1Gi
+    limits:
+      ## @param deployment.resources.limits.cpu [default: 4.0] The CPU limit for the controller container.
+      cpu: 4.0
+
+      ## @param deployment.resources.limits.memory [default: 2Gi] The memory limit for the controller container.
+      memory: 2Gi
+
+  ## @param deployment.podSecurityContext [object] Configure the controller pod's security context.
+  podSecurityContext:
+    fsGroup: 1001
+
+  ## @param deployment.containerSecurityContext [object] Configure the controller container's security context.
+  containerSecurityContext: {}
+
+  ## @param deployment.annotations [object] Annotations to be added to the deployment.
+  annotations: {}
+
+  ## @param deployment.labels [object] Labels to be added to the deployment.
+  labels: {}
+
+  ## @param deployment.startupProbe [object] Configure the deployment's startup probe.
+  startupProbe:
+    ## @param deployment.startupProbe.enabled [default: true] Enable or disable the startup probe.
+    enabled: true
+
+    ## @param deployment.startupProbe.path [string, default: /healthz] The startup probe endpoint's path.
+    path: /healthz
+
+    ## @param deployment.startupProbe.port [string, default: healthcheck] The startup probe endpoint's port.
+    port: healthcheck
+
+    ## @param deployment.startupProbe.config [object] Additional configuration for the startup probe.
+    config: {periodSeconds: 2, failureThreshold: 60}
+
+  ## @param deployment.livenessProbe [object] Configure the deployment's liveness probe.
+  livenessProbe:
+    ## @param deployment.livenessProbe.enabled [default: true] Enable or disable the liveness probe.
+    enabled: true
+
+    ## @param deployment.livenessProbe.path [string, default: /healthz] The liveness probe endpoint's path.
+    path: /healthz
+
+    ## @param deployment.livenessProbe.port [string, default: healthcheck] The liveness probe endpoint's port.
+    port: healthcheck
+
+    ## @param deployment.livenessProbe.config [object] Additional configuration for the liveness probe.
+    config: {}
+
+  ## @param deployment.readinessProbe [object] Configure the deployment's readiness probe.
+  readinessProbe:
+    ## @param deployment.readinessProbe.enabled [default: true] Enable or disable the readiness probe.
+    enabled: true
+
+    ## @param deployment.readinessProbe.path [string, default: /ready] The readiness probe endpoint's path.
+    path: /ready
+
+    ## @param deployment.readinessProbe.port [string, default: metrics] The Flask readiness endpoint's port.
+    port: metrics
+
+    ## @param deployment.readinessProbe.config [object] Additional configuration for the readiness probe.
+    config: {}
+
+  ## @param deployment.extraEnv [array] Extra environment variables to be passed to the controller container.
+  extraEnv: []
+
+  ## @param deployment.extraPorts [array] Extra ports to be exposed on the controller container.
+  extraPorts: []
+
+## @section PremiScale Controller
+
+controller:
+  ## @param controller.publisherConnections Default PostgreSQL publication processes per destination in consolidated containers.
+  publisherConnections: 2
+
+  broker:
+    ## @param controller.broker.url [string] Broker URL override; empty discovers the bundled Dragonfly Service, or dragonfly:6379 when the dependency is disabled. Put credentials in an existing Secret.
+    url: ''
+
+    ## @param controller.broker.existingSecret [string] Secret containing the complete redis:// or rediss:// URL. Overrides broker.url.
+    existingSecret: ''
+
+    ## @param controller.broker.secretKey [string] Key containing the broker URL in the existing Secret.
+    secretKey: url
+
+    ## @param controller.broker.namespace [string] Shared queue namespace. Empty uses the release namespace and name.
+    namespace: ''
+
+  registration:
+    ## @param controller.registration.createSecret [default: false] If true, the controller will create a secret with the registration token. If false, the secret must already exist.
+    createSecret: false
+
+    ## @param controller.registration.secretName [string, default: premiscale-registration-token] The name of the secret that contains the registration token. If createSecret is true, the controller will create this secret. If createSecret is false, the controller will use this secret and expects it to exist.
+    secretName: premiscale-registration-token
+
+    ## @param controller.registration.key [string, default: token] The key in the secret that contains the registration token.
+    key: token
+
+    ## @param controller.registration.value [string] User-provided platform registration key.
+    value: ''
+
+    ## @param controller.registration.immutable [default: true] If true, the registration secret cannot be updated. If false, the registration secret can be updated.
+    immutable: true
+
+  config:
+    ## @param controller.config.mountPath [string, default: /opt/premiscale/config.yaml] The path where the controller config file is mounted.
+    mountPath: /opt/premiscale/config.yaml
+
+  logging:
+    ## @param controller.logging.level [string, default: info] Can be one of info|debug|warn|error.
+    level: info
+
+  ## @param controller.extraEnv [array] Extra environment variables to be passed to the controller container. These are useful for injecting and referencing environment variables in the config that's read from the ConfigMap below.
+  extraEnv: []
+
+  ## @param controller.libvirt [object] Configuration for the libvirt provider.
+  libvirt: {}
+    # TODO: Add libvirt provider configuration here.
+    # ssh:
+    #   secretName1:
+    #     createSecret: false
+    #     ## @param controller.libvirt.ssh.secretName1.value [string] The SSH private key for the libvirt provider.
+    #     value: ''
+
+    # tls:
+    #   secretName2:
+    #     createSecret: false
+    #     ## @param controller.libvirt.tls.secretName2.value [string] The TLS certificate for the libvirt provider.
+    #     value: ''
+
+  platform:
+    ## @param controller.platform.domain [string, default: $PREMISCALE_PLATFORM] The domain of the platform.
+    domain: app.premiscale.com
+
+    ## @param controller.platform.certificates [object] For local-only testing, you can provide self-signed certificates to the controller for connection to the platform services.
+    certificates:
+      ## @param controller.platform.certificates.path [string, default: ''] If using a self-signed certificate for development purposes, specify the path.
+      path: /etc/ssl/certs/ca-certificates.crt
+
+
+
+## @section RBAC configuration
+
+
+serviceAccount:
+  ## @param serviceAccount.create [default: true] Create a dedicated account for namespaced Kopf watches and status updates.
+  create: true
+  ## @param serviceAccount.name [string] Existing or created service account name; empty uses the chart name when creating one.
+  name: ''
+
+rbac:
+  ## @param rbac.create [default: true] Grant namespaced AutoscalingGroup watch and status permissions.
+  create: true
+
+
+## @section PremiScale Controller Config
+
+
+configMap:
+  ## @param configMap.enabled Render and mount the runtime ConfigMap.
+  enabled: true
+
+  ## @param configMap.name ConfigMap name; empty preserves the chart-name default.
+  name: ''
+
+  ## @param configMap.source Choose values for structured config, or crds to project a named ControllerConfig and its referenced Hosts/ASGs.
+  source: values
+
+  ## @param configMap.controllerConfig Name in premiscale-crds.controllerConfigs to project when source is crds.
+  controllerConfig: ''
+
+  ## @param configMap.config [string] Optional complete YAML override for existing --set-file users; leave empty to use structured config.
+  config: ''
+
+  ## @param configMap.immutable [default: false] If true, the ConfigMap cannot be updated. If false, the ConfigMap can be updated.
+  immutable: false
+
+  ## @param configMap.labels [object] Labels to be added to the ConfigMap.
+  labels: {}
+
+  ## @param configMap.annotations [object] Annotations to be added to the ConfigMap.
+  annotations: {}
+
+
+## @section Controller service
+
+
+service:
+  ## @param service.enabled [default: true] Enable or disable the service. If ingress is enabled, the service type is automatically enabled and the type switched to LoadBalancer.
+  enabled: true
+
+  ## @param service.type [string, default: ClusterIP] The service type.
+  type: ClusterIP
+
+  ports:
+    ## @param service.ports.liveness [object] Configure the liveness probe port.
+    liveness:
+      protocol: TCP
+      port: 8085
+      targetPort: healthcheck
+    metrics:
+      ## @param service.ports.metrics.protocol Transport protocol for Flask readiness and metrics.
+      protocol: TCP
+      ## @param service.ports.metrics.port Service port for Flask readiness and metrics.
+      port: 9090
+      ## @param service.ports.metrics.targetPort Container port for Flask readiness and metrics.
+      targetPort: metrics
+
+
+## @section Dragonfly broker
+
+dragonfly:
+  ## @param dragonfly.enabled Install the DragonflyDB broker dependency. Disable when using an external broker.
+  enabled: true
+  ## @param dragonfly.nameOverride [string] Override the broker chart name used in resource names.
+  nameOverride: ''
+  ## @param dragonfly.fullnameOverride [string] Override the broker resource name; automatic controller discovery follows this value.
+  fullnameOverride: ''
+  ## @param dragonfly.replicaCount Keep one writable broker; additional chart replicas are independent servers, not a replicated queue.
+  replicaCount: 1
+  service:
+    ## @param dragonfly.service.type Kubernetes Service type for the broker.
+    type: ClusterIP
+    ## @param dragonfly.service.port Redis-compatible Service port; the controller discovers this port automatically.
+    port: 6379
+  storage:
+    ## @param dragonfly.storage.enabled Use a StatefulSet and persistent volume for broker snapshots.
+    enabled: true
+    ## @param dragonfly.storage.requests Persistent volume capacity for broker snapshots.
+    requests: 1Gi
+    ## @param dragonfly.storage.storageClassName [string] Storage class; empty uses the cluster's default class.
+    storageClassName: ''
+    ## @param dragonfly.storage.useFullnameForVolumes Use dependency-specific Service and PVC names to avoid collisions with the parent chart.
+    useFullnameForVolumes: true
+  ## @param dragonfly.podSecurityContext [object] Run the broker as UID/GID 1001 and make its persistent volume writable.
+  podSecurityContext:
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    runAsNonRoot: true
+  ## @param dragonfly.securityContext [object] Drop container capabilities and prevent privilege escalation.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  ## @param dragonfly.extraArgs [array] Broker arguments: one worker, 256 MB data limit, no eviction, and snapshots every minute under /data.
+  extraArgs:
+    - --proactor_threads=1
+    - --maxmemory=256mb
+    - --cache_mode=false
+    - --dir=/data
+    - --dbfilename=dump
+    - --snapshot_cron=*/1 * * * *
+  resources:
+    requests:
+      ## @param dragonfly.resources.requests.cpu Broker CPU request.
+      cpu: 100m
+      ## @param dragonfly.resources.requests.memory Broker memory request.
+      memory: 128Mi
+    limits:
+      ## @param dragonfly.resources.limits.cpu Broker CPU limit.
+      cpu: 1
+      ## @param dragonfly.resources.limits.memory Broker memory limit, including headroom for snapshots.
+      memory: 512Mi
+
+
+## @section PremiScale worker autoscaling
+
+keda:
+  ## @param keda.enabled Install KEDA 2.20.2; leave disabled when the cluster already has KEDA.
+  enabled: false
+
+autoscaling:
+  ## @param autoscaling.enabled Enable KEDA for ha consolidated replicas or hha collection/publication Deployments. HA modes require Kafka, PostgreSQL journals, and a Kubernetes-mode configMap.
+  enabled: false
+  controller:
+    ## @param autoscaling.controller.minReplicaCount Minimum consolidated ha replicas or fixed elected controller replicas in hha.
+    minReplicaCount: 2
+    ## @param autoscaling.controller.maxReplicaCount Maximum consolidated ha replicas; all collection and publication triggers share this target.
+    maxReplicaCount: 8
+  ## @param autoscaling.pollingInterval Seconds between KEDA activation checks.
+  pollingInterval: 15
+  ## @param autoscaling.cooldownPeriod Idle seconds before scaling a worker deployment to zero.
+  cooldownPeriod: 300
+  ## @param autoscaling.scaleDownStabilizationWindowSeconds Stabilize scale-down decisions while existing work drains.
+  scaleDownStabilizationWindowSeconds: 300
+  collectors:
+    ## @param autoscaling.collectors.minReplicaCount Minimum collection pods; zero allows idle scale-to-zero.
+    minReplicaCount: 2
+    ## @param autoscaling.collectors.maxReplicaCount Maximum collection pods.
+    maxReplicaCount: 8
+    ## @param autoscaling.collectors.activeConnectionsPerReplica Target active host operations per collection pod.
+    activeConnectionsPerReplica: 8
+    ## @param autoscaling.collectors.outstandingRequestsPerReplica Target queued or leased host requests per collection pod.
+    outstandingRequestsPerReplica: 16
+  publisherDefaults:
+    ## @param autoscaling.publisherDefaults.minReplicaCount Minimum pods for each remote database subscriber.
+    minReplicaCount: 2
+    ## @param autoscaling.publisherDefaults.maxReplicaCount Maximum pods for each remote database subscriber.
+    maxReplicaCount: 4
+    ## @param autoscaling.publisherDefaults.connectionsPerReplica Maximum database publisher connections per pod, including idle connections.
+    connectionsPerReplica: 2
+    ## @param autoscaling.publisherDefaults.activeConnectionsPerReplica Target connections actively writing batches per publisher pod.
+    activeConnectionsPerReplica: 1.5
+    ## @param autoscaling.publisherDefaults.outstandingRequestsPerReplica Target queued or leased batches per publisher pod.
+    outstandingRequestsPerReplica: 20
+  ## @param autoscaling.publishers [object] Map of controller.databases.publishers names to per-subscriber scaling overrides. PostgreSQL and InfluxDB subscribers can scale; primary and other local-file writers remain in the controller.
+  publishers: {}
+  workers:
+    ## @param autoscaling.workers.annotations [object] Deployment annotations shared by separate worker pools.
+    annotations: {}
+    ## @param autoscaling.workers.resources [object] CPU and memory resources for each worker pod; collector subprocess count respects its CPU limit.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 1
+        memory: 512Mi
+    ## @param autoscaling.workers.extraEnv [array] Worker environment additions, including database DSNs from Secrets; controller.extraEnv is also inherited.
+    extraEnv: []
+    ## @param autoscaling.workers.extraVolumes [array] Worker credential and certificate volumes. Controller journal volumes are not inherited.
+    extraVolumes: []
+    ## @param autoscaling.workers.extraVolumeMounts [array] Mounts for worker credentials and certificates.
+    extraVolumeMounts: []
+
+
+## @section Kubernetes autoscaler
+
+
+cluster-autoscaler:
+  ## @param cluster-autoscaler.enabled [default: false] Enable or disable the autoscaler dependency of the PremiScale controller. Enable this if you would like to autoscale the cluster on which the controller resides.
+  enabled: false
+
+  # Select the cloud provider and configure node-group discovery before enabling.
+  # The autoscaler image minor version must match the Kubernetes minor version.
+  ## @param cluster-autoscaler.replicaCount Number of Cluster Autoscaler replicas.
+  replicaCount: 1
+  resources:
+    requests:
+      ## @param cluster-autoscaler.resources.requests.cpu Cluster Autoscaler CPU request.
+      cpu: 100m
+      ## @param cluster-autoscaler.resources.requests.memory Cluster Autoscaler memory request.
+      memory: 256Mi
+    limits:
+      ## @param cluster-autoscaler.resources.limits.memory Cluster Autoscaler memory limit.
+      memory: 512Mi
+  extraArgs:
+    ## @param cluster-autoscaler.extraArgs.v Cluster Autoscaler log verbosity.
+    v: 2
+    ## @param cluster-autoscaler.extraArgs.leader-elect Enable leader election for Cluster Autoscaler.
+    leader-elect: true
+    ## @param cluster-autoscaler.extraArgs.expander Node-group expansion policy.
+    expander: least-waste
+    ## @param cluster-autoscaler.extraArgs.balance-similar-node-groups Balance scaling across similar node groups.
+    balance-similar-node-groups: true
+    ## @param cluster-autoscaler.extraArgs.skip-nodes-with-local-storage Protect nodes with local storage during scale-down.
+    skip-nodes-with-local-storage: true
+    ## @param cluster-autoscaler.extraArgs.skip-nodes-with-system-pods Protect nodes with system pods during scale-down.
+    skip-nodes-with-system-pods: true
+
+## @section PostgreSQL operator
+
+cloudnative-pg:
+  ## @param cloudnative-pg.enabled [default: false] Install the CloudNativePG operator. Leave disabled when the cluster already has an operator.
+  enabled: false
+  ## @param cloudnative-pg.replicaCount Number of CloudNativePG operator replicas.
+  replicaCount: 1
+  config:
+    # Restrict reconciliation to this release's namespace.
+    ## @param cloudnative-pg.config.clusterWide Watch PostgreSQL resources across all namespaces.
+    clusterWide: false
+  resources:
+    requests:
+      ## @param cloudnative-pg.resources.requests.cpu CloudNativePG operator CPU request.
+      cpu: 100m
+      ## @param cloudnative-pg.resources.requests.memory CloudNativePG operator memory request.
+      memory: 128Mi
+    limits:
+      ## @param cloudnative-pg.resources.limits.memory CloudNativePG operator memory limit.
+      memory: 512Mi
+  monitoring:
+    # Enabling this requires Prometheus Operator CRDs.
+    ## @param cloudnative-pg.monitoring.podMonitorEnabled Create a PodMonitor for the CloudNativePG operator.
+    podMonitorEnabled: false

@@ -1,0 +1,6 @@
+dependencies:
+- name: premiscale
+  repository: file://../../../charts/premiscale
+  version: 0.0.1
+digest: sha256:16c9ec12bddd08eba8bea8dd0c1a2e9d9271eb56d0db563662be9284d1178118
+generated: "2026-09-23T01:06:46.285758-04:00"

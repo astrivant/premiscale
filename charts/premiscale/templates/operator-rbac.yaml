@@ -1,0 +1,57 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ printf "%s-operator" .Release.Name | quote }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace | quote }}
+rules:
+  {{- if eq .Values.configMap.source "crds" }}
+  - apiGroups: [premiscale.com]
+    resources: [controllerconfigs, hosts]
+    verbs: [get, list, watch]
+  - apiGroups: [premiscale.com]
+    resources: [controllerconfigs]
+    resourceNames: [{{ .Values.configMap.controllerConfig | quote }}]
+    verbs: [patch]
+  - apiGroups: [premiscale.com]
+    resources: [controllerconfigs/status]
+    resourceNames: [{{ .Values.configMap.controllerConfig | quote }}]
+    verbs: [get, patch, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [{{ include "premiscale.configMapName" . | quote }}]
+    verbs: [get, patch]
+  {{- end }}
+  {{- if ne .Values.mode "singular" }}
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    resourceNames: [{{ include "premiscale.leaseName" . | quote }}]
+    verbs: [get, update]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [patch]
+  {{- end }}
+  - apiGroups: [premiscale.com]
+    resources: [autoscalinggroups]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [premiscale.com]
+    resources: [autoscalinggroups/status]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ printf "%s-operator" .Release.Name | quote }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name | default (ternary .Chart.Name "default" .Values.serviceAccount.create) | quote }}
+    namespace: {{ .Values.global.namespace | default .Release.Namespace | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ printf "%s-operator" .Release.Name | quote }}
+{{- end }}

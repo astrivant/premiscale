@@ -1,0 +1,46 @@
+version: v1alpha1
+controller:
+  mode: kubernetes
+  pidFile: /var/lib/premiscale/premiscale.pid
+  healthcheck:
+    host: 0.0.0.0
+    port: 8085
+    apiPort: 9090
+  kubernetes:
+    autoscalerHost: premiscale-externalgrpc-cluster-autoscaler
+    autoscalerPort: 8085
+    providerHost: 0.0.0.0
+    providerPort: 50051
+    clusterName: minikube
+    stateDsn: ${PREMISCALE_JOURNAL_DSN}
+  kafka:
+    enabled: true
+    bootstrapServers: ${PREMISCALE_KAFKA_BOOTSTRAP_SERVERS}
+    topic: premiscale.metrics
+  databases:
+    collectionInterval: 60
+    hostConnectionTimeout: 10
+    maxHostConnectionThreads: 16
+    state:
+      type: memory
+      dbfile: /var/lib/premiscale/state.db
+    timeseries:
+      type: memory
+      retention: 300
+    publishers:
+      postgresql:
+        type: postgresql
+        dsn: ${PREMISCALE_POSTGRES_DSN}
+        retention: 86400
+  platform:
+    domain: $PREMISCALE_PLATFORM
+    token: $PREMISCALE_TOKEN
+    certificates:
+      path: $PREMISCALE_CACERT
+    actionsQueueMaxSize: 0
+  reconciliation:
+    interval: 60
+  autoscale:
+    # Add the host inventory and ASGs for the cluster being managed.
+    hosts: []
+    groups: {}

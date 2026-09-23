@@ -1,0 +1,121 @@
+providerStorage:
+  size: 1Gi
+  storageClassName: standard
+
+premiscale:
+  dragonfly:
+    enabled: true
+    storage:
+      storageClassName: standard
+  deployment:
+    command: [/usr/bin/tini, --, poetry, run, premiscale]
+    image:
+      name: premiscale/premiscale
+      tag: minikube
+      pullPolicy: Never
+    resources:
+      requests:
+        cpu: 0.1
+        memory: 256Mi
+      limits:
+        cpu: 1
+        memory: 768Mi
+    podSecurityContext:
+      runAsUser: 1001
+      runAsGroup: 1001
+      fsGroup: 1001
+      runAsNonRoot: true
+    extraVolumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: premiscale-data
+    extraVolumeMounts:
+    - name: data
+      mountPath: /var/lib/premiscale
+    extraPorts:
+    - name: autoscaler-grpc
+      containerPort: 50051
+      protocol: TCP
+    startupProbe:
+      enabled: true
+      config:
+        periodSeconds: 2
+        failureThreshold: 60
+    livenessProbe:
+      enabled: true
+    readinessProbe:
+      enabled: true
+  controller:
+    registration:
+      createSecret: true
+      value: ''
+    platform:
+      certificates:
+        path: /etc/ssl/certs/ca-certificates.crt
+  configMap:
+    enabled: true
+    # Structured runtime settings are provided below; an explicit config file can override them.
+    config: ''
+  service:
+    ports:
+      autoscaler-grpc:
+        port: 50051
+        targetPort: 50051
+        protocol: TCP
+  cluster-autoscaler:
+    enabled: true
+    cloudProvider: externalgrpc
+    # The upstream chart gates its Deployment on discovery configuration.
+    # Externalgrpc obtains node groups from the provider rather than AWS-style tags.
+    autoDiscovery:
+      clusterName: minikube
+    image:
+      tag: v1.35.0
+    extraArgs:
+      cloud-config: /etc/autoscaler/cloud-config.yaml
+    extraVolumes:
+    - name: externalgrpc
+      configMap:
+        name: premiscale-externalgrpc
+    extraVolumeMounts:
+    - name: externalgrpc
+      mountPath: /etc/autoscaler
+      readOnly: true
+  cloudnative-pg:
+    enabled: true
+  config:
+    version: v1alpha1
+    controller:
+      mode: kubernetes-external-metrics
+      pidFile: /var/lib/premiscale/premiscale.pid
+      healthcheck:
+        host: 0.0.0.0
+        port: 8085
+      kubernetes:
+        autoscalerHost: premiscale-externalgrpc-cluster-autoscaler
+        autoscalerPort: 8085
+        providerHost: 0.0.0.0
+        providerPort: 50051
+        clusterName: minikube
+        stateFile: /var/lib/premiscale/autoscaler.db
+      databases:
+        collectionInterval: 60
+        hostConnectionTimeout: 10
+        maxHostConnectionThreads: 2
+        state:
+          type: memory
+          dbfile: /var/lib/premiscale/state.db
+        timeseries:
+          type: memory
+          retention: 300
+      platform:
+        domain: $PREMISCALE_PLATFORM
+        token: $PREMISCALE_TOKEN
+        certificates:
+          path: $PREMISCALE_CACERT
+        actionsQueueMaxSize: 0
+      reconciliation:
+        interval: 60
+      autoscale:
+        hosts: []
+        groups: {}

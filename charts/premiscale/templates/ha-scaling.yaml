@@ -1,0 +1,40 @@
+{{- if and (eq .Values.mode "ha") .Values.autoscaling.enabled }}
+{{- $root := . }}
+{{- $namespace := .Values.global.namespace | default .Release.Namespace }}
+{{- $port := include "premiscale.apiPort" . }}
+{{- $signals := dict "collectors" (merge (dict "path" "collectors") (deepCopy .Values.autoscaling.collectors)) }}
+{{- range $name, $overrides := .Values.autoscaling.publishers }}
+{{- $_ := set $signals (printf "publisher-%s" $name) (mergeOverwrite (deepCopy $root.Values.autoscaling.publisherDefaults) $overrides (dict "path" (printf "publishers/%s" $name))) }}
+{{- end }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "premiscale.fullname" . | trunc 60 | trimSuffix "-" }}-ha
+  namespace: {{ $namespace }}
+spec:
+  scaleTargetRef:
+    name: {{ default .Values.deployment.name .Chart.Name }}
+  pollingInterval: {{ .Values.autoscaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.cooldownPeriod }}
+  minReplicaCount: {{ .Values.autoscaling.controller.minReplicaCount }}
+  maxReplicaCount: {{ .Values.autoscaling.controller.maxReplicaCount }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.autoscaling.scaleDownStabilizationWindowSeconds }}
+  triggers:
+    {{- range $name, $settings := $signals }}
+    {{- range $field, $target := dict "activeConnections" $settings.activeConnectionsPerReplica "outstandingRequests" $settings.outstandingRequestsPerReplica }}
+    - type: metrics-api
+      name: {{ printf "%s-%s" $name $field | lower }}
+      metricType: AverageValue
+      metadata:
+        url: {{ printf "http://%s-scaling.%s.svc:%v/scaling/%s" (include "premiscale.fullname" $root | trunc 54 | trimSuffix "-") $namespace $port $settings.path | quote }}
+        format: json
+        valueLocation: {{ $field }}
+        targetValue: {{ $target | quote }}
+        timeout: "10000"
+    {{- end }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,2 @@
+#cloud-config
+hostname: ${PREMISCALE_NODE_NAME}

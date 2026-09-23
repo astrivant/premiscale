@@ -1,0 +1,26 @@
+# Overlay on singular, ha, or hha chart values. Provision the bucket separately.
+config:
+  controller:
+    databases:
+      publishers:
+        grafana:
+          type: influxdb
+          url: https://influxdb.example.com
+          organization: premiscale
+          bucket: vm-metrics
+          token: $PREMISCALE_INFLUXDB_TOKEN
+          timeoutSeconds: 10
+controller:
+  extraEnv:
+    - name: PREMISCALE_INFLUXDB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: premiscale-influxdb
+          key: token
+# Used only for distributed publication in ha/hha; singular also publishes to this destination.
+autoscaling:
+  publishers:
+    grafana:
+      minReplicaCount: 2
+      maxReplicaCount: 4
+      connectionsPerReplica: 2

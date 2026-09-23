@@ -1,11 +1,19 @@
 ARG IMAGE=python
-ARG TAG=3.10.14
+ARG TAG=3.14-bookworm
+
+FROM golang:1.25-bookworm AS autoscaler-build
+WORKDIR /build
+COPY pkg/premiscale/cluster-autoscaler/go.mod pkg/premiscale/cluster-autoscaler/go.sum ./
+RUN go mod download
+COPY pkg/premiscale/cluster-autoscaler/ ./
+RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -o /premiscale-autoscaler ./cmd/premiscale-autoscaler
 
 FROM ${IMAGE}:${TAG} AS base
 
 SHELL [ "/bin/bash", "-c" ]
 
 ENV PREMISCALE_TOKEN="" \
+    PREMISCALE_AUTOSCALER_BINARY=/usr/local/bin/premiscale-autoscaler \
     PREMISCALE_CONFIG_PATH=/opt/premiscale/config.yaml \
     PREMISCALE_PID_FILE=/opt/premiscale/premiscale.pid \
     PREMISCALE_LOG_LEVEL=info \
@@ -22,13 +30,9 @@ LABEL org.opencontainers.image.documentation "https://premiscale.com"
 
 USER root
 
-# https://github.com/krallin/tini
-ARG TINI_VERSION=v0.19.0
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-RUN chmod +x /tini
+COPY --from=autoscaler-build /premiscale-autoscaler /usr/local/bin/premiscale-autoscaler
 
-ARG LIBVIRT_DEV_VERSION=9.0.0-4
-RUN apt update && apt list -a libvirt-dev && apt install -y libvirt-dev=${LIBVIRT_DEV_VERSION} \
+RUN apt update && apt install -y libvirt-dev tini \
     && rm -rf /var/apt/lists/* \
     && groupadd premiscale --gid 1001 \
     && useradd -rm -d /opt/premiscale -s /bin/bash -g premiscale -u 1001 premiscale
@@ -43,32 +47,37 @@ USER premiscale
 RUN mkdir -p "$HOME"/.ssh/ "$HOME"/.local/bin \
     && touch "$HOME"/.ssh/config
 
+## Build the installable package from this checkout with Poetry.
+
+FROM base AS wheel-build
+RUN pip install --no-cache-dir poetry==2.5.1
+COPY --chown=premiscale:premiscale pkg/ ./pkg/
+COPY --chown=premiscale:premiscale README.md LICENSE poetry.lock pyproject.toml ./
+RUN poetry build --format wheel
+
 ## Production image
 
 FROM base AS production
 
-ARG PYTHON_USERNAME
-ARG PYTHON_PASSWORD
-ARG PYTHON_REPOSITORY
-ARG PYTHON_INDEX=https://${PYTHON_USERNAME}:${PYTHON_PASSWORD}@repo.ops.premiscale.com/repository/${PYTHON_REPOSITORY}/simple
-ARG PYTHON_PACKAGE_VERSION=0.0.1
-
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir --no-input --extra-index-url="${PYTHON_INDEX}" premiscale=="${PYTHON_PACKAGE_VERSION}" \
+COPY --from=wheel-build /opt/premiscale/dist/*.whl /tmp/premiscale-dist/
+RUN pip install --no-cache-dir --no-input /tmp/premiscale-dist/*.whl \
     && premiscale --version
 
-ENTRYPOINT [ "/tini", "--" ]
-CMD [ "bash", "-c", "premiscale --log-stdout" ]
+ENTRYPOINT [ "/usr/bin/tini", "--" ]
+CMD [ "premiscale", "--log-stdout" ]
 
 ## Development image
 
 FROM base AS develop
 
 ENV POETRY_VIRTUALENVS_CREATE=true \
-    POETRY_VERSION=1.8.3 \
+    POETRY_VERSION=2.5.1 \
     POETRY_CACHE_DIR=/opt/premiscale/poetry-cache
 
-COPY --chown=premiscale:premiscale src/ ./src/
+COPY --chown=premiscale:premiscale pkg/ ./pkg/
+COPY --chown=premiscale:premiscale integrations/minikube/minikube.sh integrations/minikube/smoke.py ./integrations/minikube/
+COPY --chown=premiscale:premiscale .config/minikube/ ./.config/minikube/
+COPY --chown=premiscale:premiscale .config/keda/ ./.config/keda/
 COPY --chown=premiscale:premiscale README.md LICENSE poetry.lock pyproject.toml requirements.txt ./
 
 RUN mkdir -p ${POETRY_CACHE_DIR}
@@ -80,5 +89,6 @@ RUN --mount=type=cache,target=${POETRY_CACHE_DIR},uid=1001,gid=1001 poetry insta
     && poetry run premiscale --version
 RUN poetry install --without=dev
 
-ENTRYPOINT [ "/tini", "--" ]
-CMD [ "bash", "-c", "poetry run premiscale --log-stdout --log-level=${PREMISCALE_LOG_LEVEL}" ]
+ENTRYPOINT [ "/usr/bin/tini", "--" ]
+# The CLI reads PREMISCALE_LOG_LEVEL directly from the environment.
+CMD [ "poetry", "run", "premiscale", "--log-stdout" ]

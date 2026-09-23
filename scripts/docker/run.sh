@@ -1,18 +1,15 @@
 #! /usr/bin/env bash
 # Docker run the docker/PROJECT-directory.
 
-
 VERSION="${1:-0.1.0}"
 COUNT="${2:-1}"
 PROJECT="${3:-premiscale}"
 shift && shift && shift
 
-
 mapfile -t containers < <(docker ps --format '{{.Names}}' | grep "$PROJECT")
 for container in "${containers[@]}"; do
-    docker stop "$container" >/dev/null && docker rm "$container" >/dev/null && printf "Removed running container \"%s\"\\n" "$container"
+    docker stop "$container" > /dev/null && docker rm "$container" > /dev/null && printf "Removed running container \"%s\"\\n" "$container"
 done
-
 
 for _ in $(seq 1 "$COUNT"); do
     docker run -itd --name "${PROJECT}"-"$(uuid | sed "s@-@@g" | head -c 10)" \

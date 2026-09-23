@@ -1,0 +1,871 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Generated from charts/premiscale-crds/crds; do not edit.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "v1alpha1"
+    },
+    "controller": {
+      "type": "object",
+      "properties": {
+        "pidFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "kubernetes",
+            "standalone",
+            "standalone-external-metrics",
+            "kubernetes-external-metrics"
+          ]
+        },
+        "kubernetes": {
+          "type": "object",
+          "properties": {
+            "autoscalerPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "autoscalerHost": {
+              "type": "string",
+              "minLength": 1
+            },
+            "providerHost": {
+              "type": "string",
+              "minLength": 1
+            },
+            "providerPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "clusterName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stateFile": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stateDsn": {
+              "type": "string",
+              "description": "PostgreSQL operation and volume journal DSN, supporting environment references. Required for HA."
+            },
+            "providerCert": {
+              "type": "string"
+            },
+            "providerKey": {
+              "type": "string"
+            },
+            "clientCA": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 63,
+              "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+            }
+          },
+          "required": [
+            "autoscalerPort",
+            "autoscalerHost"
+          ],
+          "additionalProperties": false
+        },
+        "healthcheck": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "apiPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 9090
+            },
+            "stateDirectory": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Parent directory for private per-run shared process observations."
+            }
+          },
+          "required": [
+            "host",
+            "port"
+          ],
+          "additionalProperties": false
+        },
+        "kafka": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "bootstrapServers": {
+              "type": "string"
+            },
+            "topic": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}$"
+            },
+            "groupPrefix": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}$"
+            },
+            "options": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "databases": {
+          "type": "object",
+          "properties": {
+            "collectionInterval": {
+              "type": "integer",
+              "minimum": 5
+            },
+            "hostConnectionTimeout": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxHostConnectionThreads": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "state": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "memory",
+                    "mysql"
+                  ]
+                },
+                "dbfile": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "connection": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "database": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "credentials": {
+                      "type": "object",
+                      "properties": {
+                        "username": {
+                          "type": "string",
+                          "minLength": 0
+                        },
+                        "password": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "username",
+                        "password"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "url",
+                    "database",
+                    "credentials"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false
+            },
+            "timeseries": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "memory"
+                  ]
+                },
+                "retention": {
+                  "type": "integer",
+                  "minimum": 300
+                },
+                "dbfile": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "retention"
+              ],
+              "additionalProperties": false
+            },
+            "publishers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "memory",
+                      "postgresql",
+                      "influxdb"
+                    ]
+                  },
+                  "retention": {
+                    "type": "integer",
+                    "minimum": 300
+                  },
+                  "dbfile": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "dsn": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "connectTimeout": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "statementTimeout": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "organization": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "bucket": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "timeoutSeconds": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "caFile": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "hostConnectionQueueSize": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "collectionInterval",
+            "hostConnectionTimeout",
+            "maxHostConnectionThreads",
+            "state",
+            "timeseries"
+          ],
+          "additionalProperties": false
+        },
+        "platform": {
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "minLength": 1
+            },
+            "token": {
+              "type": "string",
+              "minLength": 1
+            },
+            "certificates": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            },
+            "actionsQueueMaxSize": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "domain",
+            "token",
+            "certificates",
+            "actionsQueueMaxSize"
+          ],
+          "additionalProperties": false
+        },
+        "reconciliation": {
+          "type": "object",
+          "properties": {
+            "interval": {
+              "type": "integer",
+              "minimum": 5
+            },
+            "collection": {
+              "type": "object",
+              "properties": {
+                "minThreads": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 1
+                },
+                "initialThreads": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 1
+                },
+                "targetThroughput": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "proportionalGain": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 1.0
+                },
+                "integralGain": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.1
+                },
+                "derivativeGain": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.05
+                },
+                "smoothing": {
+                  "type": "number",
+                  "maximum": 1,
+                  "default": 0.3,
+                  "exclusiveMinimum": 0
+                },
+                "deadband": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.1,
+                  "exclusiveMaximum": 1
+                },
+                "maxStep": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "interval"
+          ],
+          "additionalProperties": false
+        },
+        "autoscale": {
+          "type": "object",
+          "properties": {
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Hypervisor address or DNS name."
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
+                  },
+                  "protocol": {
+                    "type": "string",
+                    "enum": [
+                      "ssh",
+                      "SSH",
+                      "tls",
+                      "TLS",
+                      "http",
+                      "HTTP",
+                      "https",
+                      "HTTPS"
+                    ]
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 599940,
+                    "default": 45
+                  },
+                  "user": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sshKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Private SSH key or an environment-variable reference expanded by the controller."
+                  },
+                  "hypervisor": {
+                    "type": "string",
+                    "enum": [
+                      "esx",
+                      "qemu"
+                    ]
+                  },
+                  "resources": {
+                    "type": "object",
+                    "properties": {
+                      "cpu": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "memory": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "storage": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "cpu",
+                      "memory",
+                      "storage"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "address",
+                  "port",
+                  "protocol",
+                  "hypervisor",
+                  "name"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "groups": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Existing libvirt template domain name; independent of this resource metadata.name."
+                  },
+                  "imageMigration": {
+                    "type": "string",
+                    "enum": [
+                      "migrate",
+                      "centralized"
+                    ]
+                  },
+                  "cloud-init": {
+                    "type": "object",
+                    "properties": {
+                      "inline": {
+                        "type": "string"
+                      },
+                      "file": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "hosts": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "address": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Hypervisor address or DNS name."
+                            },
+                            "port": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 65535
+                            },
+                            "protocol": {
+                              "type": "string",
+                              "enum": [
+                                "ssh",
+                                "SSH",
+                                "tls",
+                                "TLS",
+                                "http",
+                                "HTTP",
+                                "https",
+                                "HTTPS"
+                              ]
+                            },
+                            "timeout": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 599940,
+                              "default": 45
+                            },
+                            "user": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "sshKey": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Private SSH key or an environment-variable reference expanded by the controller."
+                            },
+                            "hypervisor": {
+                              "type": "string",
+                              "enum": [
+                                "esx",
+                                "qemu"
+                              ]
+                            },
+                            "resources": {
+                              "type": "object",
+                              "properties": {
+                                "cpu": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "memory": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "storage": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "cpu",
+                                "memory",
+                                "storage"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "address",
+                            "port",
+                            "protocol",
+                            "hypervisor",
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    ]
+                  },
+                  "nodeLabels": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "nodeTaints": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "effect": {
+                          "type": "string",
+                          "enum": [
+                            "NoSchedule",
+                            "PreferNoSchedule",
+                            "NoExecute"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "effect"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "maxPods": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "replacement": {
+                    "type": "object",
+                    "properties": {
+                      "strategy": {
+                        "type": "string",
+                        "enum": [
+                          "rollingUpdate"
+                        ]
+                      },
+                      "maxUnavailable": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "maxSurge": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "strategy",
+                      "maxUnavailable",
+                      "maxSurge"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "networking": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "static",
+                          "dynamic",
+                          "ignore"
+                        ]
+                      },
+                      "addresses": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      },
+                      "subnet": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "gateway": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "addresses",
+                      "subnet",
+                      "gateway"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "scaling": {
+                    "type": "object",
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "enum": [
+                          "random",
+                          "vacancy",
+                          "linear",
+                          "linear-random"
+                        ]
+                      },
+                      "maxNodes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "minNodes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "increment": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "cooldown": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "resourceTarget": {
+                        "type": "object",
+                        "properties": {
+                          "cpu": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "memory": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "storage": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "cpu",
+                          "memory",
+                          "storage"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "method",
+                      "maxNodes",
+                      "minNodes",
+                      "increment",
+                      "cooldown",
+                      "resourceTarget"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "image",
+                  "name",
+                  "imageMigration",
+                  "cloud-init",
+                  "hosts",
+                  "replacement",
+                  "networking",
+                  "scaling"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "hosts",
+            "groups"
+          ],
+          "additionalProperties": false
+        },
+        "broker": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "namespace": {
+              "type": "string",
+              "minLength": 1
+            },
+            "leaseSeconds": {
+              "type": "integer",
+              "minimum": 3
+            },
+            "blockMilliseconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "connectTimeout": {
+              "type": "number",
+              "minimum": 0.001
+            },
+            "socketTimeout": {
+              "type": "number",
+              "minimum": 0.001
+            },
+            "caFile": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "pidFile",
+        "mode",
+        "kubernetes",
+        "healthcheck",
+        "databases",
+        "platform",
+        "reconciliation",
+        "autoscale"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "version",
+    "controller"
+  ],
+  "additionalProperties": false
+}

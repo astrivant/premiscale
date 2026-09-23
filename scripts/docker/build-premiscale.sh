@@ -1,11 +1,7 @@
 #! /usr/bin/env bash
-# Docker build of the docker/premiscale-directory.
+# Build the production image from this checkout.
 
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+IMAGE_TAG="${1:-premiscale:local}"
 
-PYTHON_PACKAGE_VERSION="${1:-0.0.1}"
-PYTHON_USERNAME="${2:-$(pass show premiscale/nexus/username)}"
-PYTHON_PASSWORD="${3:-$(pass show premiscale/nexus/password)}"
-PYTHON_REPOSITORY="${4:-python-develop}"
-
-
-docker build . -t docker.ops.premiscale.com/premiscale:"$PYTHON_PACKAGE_VERSION" --build-arg=PYTHON_PACKAGE_VERSION="$PYTHON_PACKAGE_VERSION" --build-arg=PYTHON_USERNAME="$PYTHON_USERNAME" --build-arg=PYTHON_PASSWORD="$PYTHON_PASSWORD" --build-arg=PYTHON_REPOSITORY="$PYTHON_REPOSITORY" -f docker/premiscale/Dockerfile
+docker build --target production --tag "$IMAGE_TAG" --file "$PROJECT_ROOT/Dockerfile" "$PROJECT_ROOT"

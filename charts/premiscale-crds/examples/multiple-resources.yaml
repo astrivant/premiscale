@@ -1,0 +1,197 @@
+commonLabels:
+  app.kubernetes.io/part-of: premiscale
+commonAnnotations:
+  example.premiscale.com/description: Two resources of each kind
+controllerConfigs:
+  primary:
+    spec:
+      pidFile: /opt/premiscale/premiscale.pid
+      mode: kubernetes
+      broker:
+        leaseSeconds: 60
+        blockMilliseconds: 1000
+        connectTimeout: 5
+        socketTimeout: 5
+        namespace: primary
+      kubernetes:
+        autoscalerPort: 8085
+        autoscalerHost: cluster-autoscaler
+        providerHost: 127.0.0.1
+        providerPort: 50051
+        clusterName: primary
+        stateFile: /var/lib/premiscale/primary/autoscaler.db
+      healthcheck:
+        host: 127.0.0.1
+        port: 8085
+      databases:
+        maxHostConnectionThreads: 10
+        collectionInterval: 60
+        hostConnectionTimeout: 60
+        state:
+          type: memory
+        timeseries:
+          type: memory
+          retention: 300
+        publishers: {}
+      platform:
+        actionsQueueMaxSize: 0
+        domain: $PREMISCALE_PLATFORM
+        token: $PREMISCALE_TOKEN
+        certificates:
+          path: $PREMISCALE_CACERT
+      reconciliation:
+        interval: 60
+        collection:
+          minThreads: 1
+          initialThreads: 1
+          proportionalGain: 1.0
+          integralGain: 0.1
+          derivativeGain: 0.05
+          smoothing: 0.3
+          deadband: 0.1
+          maxStep: 2
+      autoscale:
+        hosts:
+        - hypervisor-primary
+        groups:
+        - workers-primary
+  secondary:
+    spec:
+      pidFile: /opt/premiscale/premiscale.pid
+      mode: kubernetes
+      broker:
+        leaseSeconds: 60
+        blockMilliseconds: 1000
+        connectTimeout: 5
+        socketTimeout: 5
+        namespace: secondary
+      kubernetes:
+        autoscalerPort: 8085
+        autoscalerHost: cluster-autoscaler
+        providerHost: 127.0.0.1
+        providerPort: 50051
+        clusterName: secondary
+        stateFile: /var/lib/premiscale/secondary/autoscaler.db
+      healthcheck:
+        host: 127.0.0.1
+        port: 8085
+      databases:
+        maxHostConnectionThreads: 10
+        collectionInterval: 60
+        hostConnectionTimeout: 60
+        state:
+          type: memory
+        timeseries:
+          type: memory
+          retention: 300
+        publishers: {}
+      platform:
+        actionsQueueMaxSize: 0
+        domain: $PREMISCALE_PLATFORM
+        token: $PREMISCALE_TOKEN
+        certificates:
+          path: $PREMISCALE_CACERT
+      reconciliation:
+        interval: 60
+        collection:
+          minThreads: 1
+          initialThreads: 1
+          proportionalGain: 1.0
+          integralGain: 0.1
+          derivativeGain: 0.05
+          smoothing: 0.3
+          deadband: 0.1
+          maxStep: 2
+      autoscale:
+        hosts:
+        - hypervisor-secondary
+        groups:
+        - workers-secondary
+hosts:
+  hypervisor-primary:
+    spec:
+      address: 192.0.2.1
+      port: 22
+      protocol: ssh
+      hypervisor: qemu
+      user: root
+      sshKey: $PREMISCALE_SSH_KEY
+      timeout: 45
+  hypervisor-secondary:
+    spec:
+      address: 192.0.2.2
+      port: 22
+      protocol: ssh
+      hypervisor: qemu
+      user: root
+      sshKey: $PREMISCALE_SSH_KEY
+      timeout: 45
+autoscalingGroups:
+  workers-primary:
+    spec:
+      name: ubuntu-template
+      image: /images/ubuntu.qcow2
+      imageMigration: centralized
+      cloud-init:
+        inline: "#cloud-config\n"
+      hosts:
+      - hypervisor-primary
+      maxPods: 110
+      nodeLabels:
+        workload: primary
+      replacement:
+        strategy: rollingUpdate
+        maxUnavailable: 1
+        maxSurge: 1
+      networking:
+        type: static
+        addresses:
+        - 192.0.2.101
+        subnet: 192.0.2.0/24
+        gateway: 192.0.2.254
+      scaling:
+        method: vacancy
+        minNodes: 0
+        maxNodes: 1
+        increment: 1
+        cooldown: 60
+        resourceTarget:
+          cpu: 80
+          memory: 80
+          storage: 80
+    labels:
+      premiscale.com/cluster: primary
+  workers-secondary:
+    spec:
+      name: ubuntu-template
+      image: /images/ubuntu.qcow2
+      imageMigration: centralized
+      cloud-init:
+        inline: "#cloud-config\n"
+      hosts:
+      - hypervisor-secondary
+      maxPods: 110
+      nodeLabels:
+        workload: secondary
+      replacement:
+        strategy: rollingUpdate
+        maxUnavailable: 1
+        maxSurge: 1
+      networking:
+        type: static
+        addresses:
+        - 192.0.2.102
+        subnet: 192.0.2.0/24
+        gateway: 192.0.2.254
+      scaling:
+        method: vacancy
+        minNodes: 0
+        maxNodes: 1
+        increment: 1
+        cooldown: 60
+        resourceTarget:
+          cpu: 80
+          memory: 80
+          storage: 80
+    labels:
+      premiscale.com/cluster: secondary

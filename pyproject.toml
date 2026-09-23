@@ -10,14 +10,21 @@ homepage = "https://premiscale.com"
 repository = "https://github.com/premiscale/premiscale"
 documentation = "https://docs.premiscale.com"
 packages = [
-  { include = "premiscale", from = "src" }
+  # Keep the nested package first so wheel paths use its Python import name.
+  { include = "premiscale_cluster_autoscaler", from = "pkg/premiscale/cluster-autoscaler/integrations/python" },
+  { include = "premiscale", from = "pkg" }
 ]
 include = [
-  "LICENSE"
+  "LICENSE",
+  { path = "pkg/premiscale/cluster-autoscaler/go.*", format = ["sdist", "wheel"] },
+  { path = "pkg/premiscale/cluster-autoscaler/bridge/*.go", format = ["sdist", "wheel"] },
+  { path = "pkg/premiscale/cluster-autoscaler/protocol/*.go", format = ["sdist", "wheel"] },
+  { path = "pkg/premiscale/cluster-autoscaler/cmd/**/*.go", format = ["sdist", "wheel"] },
+  { path = "pkg/premiscale/cluster-autoscaler/proto/*.proto", format = ["sdist", "wheel"] }
 ]
 exclude = [
-  "src/premiscale/config/examples",
-  "src/premiscale/config/docs"
+  "pkg/premiscale/config/examples",
+  "pkg/premiscale/config/docs"
 ]
 keywords = [
     "premiscale",
@@ -44,20 +51,18 @@ classifiers = [
     "Natural Language :: English",
     "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
 ]
 
 [tool.poetry.dependencies]
-python = "^3.10"
-yamale = "^5"
+python = "^3.14"
+jsonschema = "^4.26"
 Flask = "^3.0.0"
 flask-cors = "^4.0"
 websockets = "^12.0"
-libvirt-python = "^10"
+libvirt-python = "^12.7"
 setproctitle = "^1.3"
 sqlmodel = "^0"
 cattrs = "^23.2.3"
@@ -67,26 +72,37 @@ prometheus-client = "^0.20.0"
 wrapt = "^1.16.0"
 xmltodict = "^0.13.0"
 tinyflux = "^1.0.0"
-grpcio = "^1.64.1"
+grpcio = "^1.84.0"
+protobuf = "^7.35.1"
+pycdlib = "^1.14"
 cachetools = "^5.3.3"
-influxdb-client = {extras = ["ciso"], version = "^1.44.0"}
 
 requests = "^2.32.3"
 pyhumps = "^3.8.0"
+networkx = "~3.4.2"
+redis = "^8.1"
+psycopg = { version = "^3.3", extras = ["binary"] }
+kopf = "^1.44.6"
+confluent-kafka = "^2.15"
 [tool.poetry.group.profile.dependencies]
 memray = "^1.12"
 pytest-memray = "^1.6.0"
 
+[tool.poetry.group.test.dependencies]
+pytest = "^9"
+pytest-xdist = "^3.8"
+
 [tool.poetry.group.dev.dependencies]
-twine = "^5"
+grpcio-tools = "1.84.0"
 pylint = "^3"
 pre-commit = "^3"
 cogapp = "^3.4"
 mypy = "^1"
-pydoclint = "^0.5.0"
+pydoclint = "0.9.1"
 pdoc = "^14.5.0"
 types-pyyaml = "^6.0.12.20240311"
 types-requests = "^2.32.0.20240602"
+types-cachetools = "^5"
 
 [build-system]
 requires = ["poetry-core"]
@@ -95,14 +111,39 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 premiscale = "premiscale.cli:main"
 
+[tool.pytest.ini_options]
+testpaths = ["pkg/tests"]
+addopts = ["-n", "auto"]
+
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.14"
 strict_optional = true
 ignore_missing_imports = true
 
 [tool.pydoclint]
 style = "google"
-require-return-section-when-returning-nothing = false
+arg-type-hints-in-signature = true
+arg-type-hints-in-docstring = true
+check-arg-order = true
+check-return-types = true
+check-yield-types = true
+check-class-attributes = true
+check-style-mismatch = true
+skip-checking-short-docstrings = false
+skip-checking-raises = false
+allow-init-docstring = true
+require-return-section-when-returning-nothing = true
+require-yield-section-when-yielding-nothing = true
+ignore-underscore-args = false
+native-mode-noqa-location = "definition"
+exclude = '_pb2(_grpc)?\.py$'
+
+[tool.pydocstyle]
+convention = "google"
+# Standalone quote lines also apply to summaries that fit on one text line.
+add-ignore = ["D100", "D104", "D200", "D212"]
+add-select = ["D213"]
+match = '(?!.*_pb2(_grpc)?\.py$).*\.py'
 
 [tool.pylint."MESSAGES CONTROL"]
 disable = "invalid-name,wrong-import-order,superfluous-parens,line-too-long,missing-final-newline,logging-fstring-interpolation,too-many-instance-attributes,unused-argument,unused-import"
@@ -110,3 +151,4 @@ fail-under = 2
 
 [tool.pylint.MASTER]
 init-hook = "import sys; sys.path.append('.')"
+ignore-patterns = [".*_pb2\\.py", ".*_pb2_grpc\\.py"]

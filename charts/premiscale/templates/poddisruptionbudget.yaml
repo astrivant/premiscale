@@ -1,0 +1,1 @@
+{{- include "premiscale.disruptionBudget" (dict "name" (printf "%s-controller" (include "premiscale.fullname" . | trunc 52 | trimSuffix "-")) "namespace" (.Values.global.namespace | default .Release.Namespace) "budget" .Values.disruptionBudgets.controller "labels" (include "premiscale.selectorLabels" . | fromYaml)) }}

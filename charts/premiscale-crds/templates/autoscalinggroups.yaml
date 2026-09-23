@@ -1,0 +1,9 @@
+{{- range $name, $resource := .Values.autoscalingGroups }}
+---
+apiVersion: premiscale.com/v1alpha1
+kind: AutoscalingGroup
+metadata:
+  {{- include "premiscale-crds.metadata" (dict "root" $ "name" $name "resource" $resource) | nindent 2 }}
+spec:
+  {{- toYaml $resource.spec | nindent 2 }}
+{{- end }}

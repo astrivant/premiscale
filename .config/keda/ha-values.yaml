@@ -1,0 +1,2 @@
+# Apply after values.yaml to keep all PremiScale work in each replicated container.
+mode: ha

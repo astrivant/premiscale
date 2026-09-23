@@ -1,0 +1,24 @@
+{{- if .Values.configMap.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "premiscale.configMapName" . }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  {{- with .Values.configMap.labels }}
+  labels:
+    {{- range $k, $v := . }}
+    {{ $k }}: {{ $v }}
+    {{- end }}
+  {{- end }}
+  annotations:
+    {{- $annotations := deepCopy .Values.configMap.annotations }}
+    {{- $_ := set $annotations "premiscale.com/config-source" .Values.configMap.source }}
+    {{- if eq .Values.configMap.source "crds" }}
+    {{- $_ := set $annotations "premiscale.com/controller-config" .Values.configMap.controllerConfig }}
+    {{- end }}
+    {{- toYaml $annotations | nindent 4 }}
+immutable: {{ .Values.configMap.immutable }}
+data:
+  config.yaml: |
+    {{- include "premiscale.runtimeConfig" . | nindent 4 }}
+{{- end }}

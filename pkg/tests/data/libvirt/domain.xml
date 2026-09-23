@@ -1,0 +1,21 @@
+<domain type="kvm">
+    <name>worker-template</name>
+    <uuid>template-uuid</uuid>
+    <memory unit="KiB">1048576</memory>
+    <vcpu>2</vcpu>
+    <os>
+        <type arch="x86_64">hvm</type>
+    </os>
+    <devices>
+        <disk type="file" device="disk">
+            <driver name="qemu" type="qcow2"/>
+            <source file="/images/template.qcow2"/>
+            <target dev="vda" bus="virtio"/>
+        </disk>
+        <interface type="network">
+            <mac address="52:54:00:00:00:01"/>
+            <source network="default"/>
+            <target dev="vnet-template"/>
+        </interface>
+    </devices>
+</domain>

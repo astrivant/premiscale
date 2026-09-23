@@ -1,0 +1,58 @@
+{{- if .Values.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.service.name | default .Chart.Name }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  {{- with .Values.service.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.externalIPs }}
+  externalIPs:
+    {{- toYaml . }}
+  {{- end }}
+  ports:
+    {{- if and (ne .Values.mode "singular") (not (hasKey .Values.service.ports "autoscaler-grpc")) }}
+    - name: autoscaler-grpc
+      port: {{ dig "controller" "kubernetes" "providerPort" 50051 (include "premiscale.runtimeConfig" . | fromYaml) }}
+      targetPort: {{ dig "controller" "kubernetes" "providerPort" 50051 (include "premiscale.runtimeConfig" . | fromYaml) }}
+      protocol: TCP
+    {{- end }}
+    {{- range $k, $values := .Values.service.ports }}
+    - name: {{ $k }}
+      port: {{ $values.port }}
+      targetPort: {{ $values.targetPort }}
+      protocol: {{ $values.protocol }}
+      {{- with $values.nodePort }}
+      nodePort: {{ $values.nodePort }}
+      {{- end }}
+    {{- end }}
+  selector: {{ include "premiscale.selectorLabels" . | nindent 4 }}
+    {{- if ne .Values.mode "singular" }}
+    premiscale.com/leader: {{ include "premiscale.leaseName" . | quote }}
+    {{- end }}
+  {{- with .Values.service.healthCheckNodePort }}
+  healthCheckNodePort: {{ . }}
+  {{- end }}
+  {{- with .Values.service.internalTrafficPolicy }}
+  internalTrafficPolicy: {{ .Values.service.internalTrafficPolicy | default "Cluster" }}
+  {{- end }}
+  {{- with .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
+  {{- with .Values.service.sessionAffinity }}
+  sessionAffinity: {{ .Values.service.sessionAffinity | default "None" }}
+  {{- end }}
+  {{- if (((.Values.service.sessionAffinityConfig).clientIP).timeoutSeconds) }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.service.sessionAffinityConfig.clientIP.timeoutSeconds }}
+  {{- end }}
+{{- end }}

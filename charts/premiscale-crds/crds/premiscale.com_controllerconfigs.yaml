@@ -1,0 +1,438 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: controllerconfigs.premiscale.com
+spec:
+  group: premiscale.com
+  scope: Namespaced
+  names:
+    kind: ControllerConfig
+    plural: controllerconfigs
+    singular: controllerconfig
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    additionalPrinterColumns:
+    - name: Mode
+      type: string
+      jsonPath: .spec.mode
+    - name: ConfigMap
+      type: string
+      jsonPath: .status.configMapRef.name
+    - name: Ready
+      type: string
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          status:
+            type: object
+            properties:
+              observedGeneration:
+                type: integer
+                format: int64
+                minimum: 0
+              configurationDigest:
+                type: string
+              configMapRef:
+                type: object
+                required: [name, key]
+                properties:
+                  name:
+                    type: string
+                  key:
+                    type: string
+              conditions:
+                type: array
+                x-kubernetes-list-type: map
+                x-kubernetes-list-map-keys: [type]
+                items:
+                  type: object
+                  required: [type, status, reason, message, observedGeneration,
+                      lastTransitionTime]
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                      enum: ['True', 'False', Unknown]
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    observedGeneration:
+                      type: integer
+                      format: int64
+                      minimum: 0
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+          spec:
+            type: object
+            properties:
+              pidFile:
+                type: string
+                minLength: 1
+              mode:
+                type: string
+                enum:
+                - kubernetes
+                - standalone
+                - standalone-external-metrics
+                - kubernetes-external-metrics
+              kubernetes:
+                type: object
+                properties:
+                  autoscalerPort:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                  autoscalerHost:
+                    type: string
+                    minLength: 1
+                  providerHost:
+                    type: string
+                    minLength: 1
+                  providerPort:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                  clusterName:
+                    type: string
+                    minLength: 1
+                  stateFile:
+                    type: string
+                    minLength: 1
+                  stateDsn:
+                    type: string
+                    description: PostgreSQL operation and volume journal DSN,
+                      supporting environment references. Required for HA.
+                  providerCert:
+                    type: string
+                  providerKey:
+                    type: string
+                  clientCA:
+                    type: string
+                  namespace:
+                    type: string
+                    minLength: 1
+                    maxLength: 63
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                required:
+                - autoscalerPort
+                - autoscalerHost
+              healthcheck:
+                type: object
+                properties:
+                  host:
+                    type: string
+                    minLength: 1
+                  port:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                  apiPort:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                    default: 9090
+                  stateDirectory:
+                    type: string
+                    minLength: 1
+                    description: Parent directory for private per-run shared
+                      process observations.
+                required:
+                - host
+                - port
+              kafka:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    default: false
+                  bootstrapServers:
+                    type: string
+                  topic:
+                    type: string
+                    pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}$
+                  groupPrefix:
+                    type: string
+                    pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}$
+                  options:
+                    type: object
+                    additionalProperties:
+                      type: string
+              databases:
+                type: object
+                properties:
+                  collectionInterval:
+                    type: integer
+                    minimum: 5
+                  hostConnectionTimeout:
+                    type: integer
+                    minimum: 1
+                  maxHostConnectionThreads:
+                    type: integer
+                    minimum: 1
+                  state:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                        - memory
+                        - mysql
+                      dbfile:
+                        type: string
+                        minLength: 1
+                      connection:
+                        type: object
+                        properties:
+                          url:
+                            type: string
+                            minLength: 1
+                          database:
+                            type: string
+                            minLength: 1
+                          credentials:
+                            type: object
+                            properties:
+                              username:
+                                type: string
+                                minLength: 0
+                              password:
+                                type: string
+                                minLength: 1
+                            required:
+                            - username
+                            - password
+                        required:
+                        - url
+                        - database
+                        - credentials
+                    required:
+                    - type
+                  timeseries:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                        - memory
+                      retention:
+                        type: integer
+                        minimum: 300
+                      dbfile:
+                        type: string
+                        minLength: 1
+                    required:
+                    - type
+                    - retention
+                  publishers:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                          - memory
+                          - postgresql
+                          - influxdb
+                        retention:
+                          type: integer
+                          minimum: 300
+                        dbfile:
+                          type: string
+                          minLength: 1
+                        dsn:
+                          type: string
+                          minLength: 1
+                        connectTimeout:
+                          type: integer
+                          minimum: 1
+                        statementTimeout:
+                          type: integer
+                          minimum: 1
+                        url:
+                          type: string
+                          minLength: 1
+                        organization:
+                          type: string
+                          minLength: 1
+                        bucket:
+                          type: string
+                          minLength: 1
+                        token:
+                          type: string
+                          minLength: 1
+                        timeoutSeconds:
+                          type: integer
+                          minimum: 1
+                        caFile:
+                          type: string
+                      required:
+                      - type
+                  hostConnectionQueueSize:
+                    type: integer
+                    minimum: 1
+                required:
+                - collectionInterval
+                - hostConnectionTimeout
+                - maxHostConnectionThreads
+                - state
+                - timeseries
+              platform:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                    minLength: 1
+                  token:
+                    type: string
+                    minLength: 1
+                  certificates:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                        minLength: 1
+                    required:
+                    - path
+                  actionsQueueMaxSize:
+                    type: integer
+                    minimum: 0
+                required:
+                - domain
+                - token
+                - certificates
+                - actionsQueueMaxSize
+              reconciliation:
+                type: object
+                properties:
+                  interval:
+                    type: integer
+                    minimum: 5
+                  collection:
+                    type: object
+                    properties:
+                      minThreads:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                      initialThreads:
+                        type: integer
+                        minimum: 1
+                        default: 1
+                      targetThroughput:
+                        type: number
+                        minimum: 0
+                        exclusiveMinimum: true
+                      proportionalGain:
+                        type: number
+                        minimum: 0
+                        default: 1.0
+                      integralGain:
+                        type: number
+                        minimum: 0
+                        default: 0.1
+                      derivativeGain:
+                        type: number
+                        minimum: 0
+                        default: 0.05
+                      smoothing:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        default: 0.3
+                        exclusiveMinimum: true
+                      deadband:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        default: 0.1
+                        exclusiveMaximum: true
+                      maxStep:
+                        type: integer
+                        minimum: 1
+                        default: 2
+                    x-kubernetes-validations:
+                    - rule: self.minThreads <= self.initialThreads
+                      message: minThreads must not exceed initialThreads
+                required:
+                - interval
+              autoscale:
+                type: object
+                properties:
+                  hosts:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 253
+                      pattern:
+                        ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    x-kubernetes-list-type: set
+                    description: Names of Host resources in this namespace.
+                  groups:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 253
+                      pattern:
+                        ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    x-kubernetes-list-type: set
+                    description: Names of AutoscalingGroup resources in this
+                      namespace.
+                required:
+                - hosts
+                - groups
+              broker:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    minLength: 1
+                  namespace:
+                    type: string
+                    minLength: 1
+                  leaseSeconds:
+                    type: integer
+                    minimum: 3
+                  blockMilliseconds:
+                    type: integer
+                    minimum: 1
+                  connectTimeout:
+                    type: number
+                    minimum: 0.001
+                  socketTimeout:
+                    type: number
+                    minimum: 0.001
+                  caFile:
+                    type: string
+            required:
+            - pidFile
+            - mode
+            - kubernetes
+            - healthcheck
+            - databases
+            - platform
+            - reconciliation
+            - autoscale
+            x-kubernetes-validations:
+            - rule: '!has(self.reconciliation.collection) || self.reconciliation.collection.initialThreads
+                <= self.databases.maxHostConnectionThreads'
+              message: initialThreads must not exceed maxHostConnectionThreads
+        required:
+        - spec

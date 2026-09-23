@@ -1,0 +1,199 @@
+{{- if eq .Values.mode "hha" }}
+{{- include "premiscale.validateWorkers" . }}
+{{- $root := . }}
+{{- $namespace := .Values.global.namespace | default .Release.Namespace }}
+{{- $workerApp := ternary "premiscale-worker-pod" "premiscale-worker" (eq (include "premiscale.name" .) "premiscale-worker") }}
+{{- $config := include "premiscale.runtimeConfig" . | fromYaml }}
+{{- $port := include "premiscale.apiPort" . }}
+{{- $workloads := dict "collectors" (merge (dict "role" "collector" "path" "collectors") (deepCopy .Values.autoscaling.collectors)) }}
+{{- range $name, $overrides := .Values.autoscaling.publishers }}
+{{- $_ := set $workloads (printf "publisher-%s" $name) (mergeOverwrite (deepCopy $root.Values.autoscaling.publisherDefaults) $overrides (dict "role" "publisher" "subscriber" $name "path" (printf "publishers/%s" $name))) }}
+{{- end }}
+{{- range $workload, $settings := $workloads }}
+{{- if gt (int $settings.minReplicaCount) (int $settings.maxReplicaCount) }}
+{{- fail (printf "%s minReplicaCount must not exceed maxReplicaCount" $workload) }}
+{{- end }}
+{{- $name := include "premiscale.workerName" (dict "root" $root "workload" $workload) }}
+{{- $role := ternary "collectors" "publishers" (eq $settings.role "collector") }}
+{{- $placement := mergeOverwrite (deepCopy $root.Values.scheduling.workers) (index $root.Values.scheduling $role) ($settings.scheduling | default dict) }}
+{{- $labels := dict "app.kubernetes.io/name" $workerApp "app.kubernetes.io/instance" $root.Release.Name "app.kubernetes.io/component" $workload }}
+{{- $peers := dict "app.kubernetes.io/name" $workerApp "app.kubernetes.io/instance" $root.Release.Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  {{- with mergeOverwrite (deepCopy $root.Values.autoscaling.workers.annotations) (include "premiscale.reloadAnnotations" $root | fromYaml | default dict) }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  # KEDA owns replicas; Helm upgrades must not reset HPA decisions.
+  {{- if not $root.Values.autoscaling.enabled }}
+  replicas: {{ max 1 (int $settings.minReplicaCount) }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $root.Values.rollouts.workers.maxSurge }}
+      maxUnavailable: {{ $root.Values.rollouts.workers.maxUnavailable }}
+  minReadySeconds: {{ $root.Values.rollouts.workers.minReadySeconds }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $workerApp }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $workload }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include "premiscale.runtimeConfig" $root | sha256sum | quote }}
+      labels:
+        app.kubernetes.io/name: {{ $workerApp }}
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: {{ $workload }}
+    spec:
+      {{- include "premiscale.scheduling" (dict "settings" $placement "labels" $labels "peers" $peers "separateNodes" $placement.separateNodes) | nindent 6 }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $root.Values.deployment.terminationGracePeriodSeconds }}
+      {{- $secrets := $root.Values.deployment.image.pullSecrets | default $root.Values.global.image.pullSecrets }}
+      {{- with $secrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      {{- with $root.Values.deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "premiscale.image" $root | quote }}
+          imagePullPolicy: {{ $root.Values.deployment.image.pullPolicy }}
+          command: {{ $root.Values.deployment.command | toJson }}
+          args: [--log-stdout, --log-level, {{ $root.Values.controller.logging.level | quote }}, --role, {{ $settings.role | quote }}]
+          env:
+            - name: PREMISCALE_DEPLOYMENT_MODE
+              value: hha
+            - name: PREMISCALE_KAFKA_GROUP_PREFIX
+              value: {{ printf "%s.%s" $namespace $root.Release.Name | quote }}
+            - name: PREMISCALE_CONFIG_PATH
+              value: {{ $root.Values.controller.config.mountPath | quote }}
+            - name: PREMISCALE_STATE_DIRECTORY
+              value: {{ dig "controller" "healthcheck" "stateDirectory" "/run/premiscale" $config | quote }}
+            - name: PREMISCALE_PLATFORM
+              value: {{ $root.Values.controller.platform.domain | quote }}
+            - name: PREMISCALE_CACERT
+              value: {{ $root.Values.controller.platform.certificates.path | quote }}
+            - name: PREMISCALE_TOKEN
+              value: ""
+            - name: CONTROLLER_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PREMISCALE_QUEUE_NAMESPACE
+              value: {{ $root.Values.controller.broker.namespace | default (printf "%s:%s" $root.Release.Namespace $root.Release.Name) | quote }}
+            - name: PREMISCALE_REDIS_URL
+              {{- if $root.Values.controller.broker.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.controller.broker.existingSecret | quote }}
+                  key: {{ $root.Values.controller.broker.secretKey | quote }}
+              {{- else }}
+              value: {{ include "premiscale.brokerUrl" $root | quote }}
+              {{- end }}
+            {{- if eq $settings.role "publisher" }}
+            - name: PREMISCALE_PUBLISHER
+              value: {{ $settings.subscriber | quote }}
+            - name: PREMISCALE_PUBLISHER_CONNECTIONS
+              value: {{ $settings.connectionsPerReplica | quote }}
+            {{- end }}
+            {{- with $root.Values.controller.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with $root.Values.autoscaling.workers.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $root.Values.deployment.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ $port }}
+          {{- include "premiscale.probes" (dict "root" $root "metricsOnly" true) | nindent 10 }}
+          resources:
+            {{- toYaml ($settings.resources | default $root.Values.autoscaling.workers.resources) | nindent 12 }}
+          volumeMounts:
+            - name: runtime-status
+              mountPath: {{ dig "controller" "healthcheck" "stateDirectory" "/run/premiscale" $config | quote }}
+            - name: config
+              mountPath: {{ $root.Values.controller.config.mountPath | quote }}
+              subPath: config.yaml
+              readOnly: true
+            {{- with $root.Values.autoscaling.workers.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: runtime-status
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ include "premiscale.configMapName" $root }}
+        {{- with $root.Values.autoscaling.workers.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{ include "premiscale.disruptionBudget" (dict "name" $name "namespace" $namespace "budget" (index $root.Values.disruptionBudgets $role) "labels" $labels) }}
+{{- if $root.Values.autoscaling.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+spec:
+  scaleTargetRef:
+    name: {{ $name }}
+  pollingInterval: {{ $root.Values.autoscaling.pollingInterval }}
+  cooldownPeriod: {{ $root.Values.autoscaling.cooldownPeriod }}
+  minReplicaCount: {{ $settings.minReplicaCount }}
+  maxReplicaCount: {{ $settings.maxReplicaCount }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ $root.Values.autoscaling.scaleDownStabilizationWindowSeconds }}
+  triggers:
+    {{- range $field, $target := dict "activeConnections" $settings.activeConnectionsPerReplica "outstandingRequests" $settings.outstandingRequestsPerReplica }}
+    - type: metrics-api
+      name: {{ $field | lower }}
+      metricType: AverageValue
+      metadata:
+        url: {{ printf "http://%s-scaling.%s.svc:%v/scaling/%s" (include "premiscale.fullname" $root | trunc 54 | trimSuffix "-") $namespace $port $settings.path | quote }}
+        format: json
+        valueLocation: {{ $field }}
+        targetValue: {{ $target | quote }}
+        timeout: "10000"
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if ne .Values.mode "singular" }}
+{{- $namespace := .Values.global.namespace | default .Release.Namespace }}
+{{- $port := include "premiscale.apiPort" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "premiscale.fullname" . | trunc 54 | trimSuffix "-" }}-scaling
+  namespace: {{ $namespace }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: scaling
+      port: {{ $port }}
+      targetPort: {{ $port }}
+  selector:
+    {{- include "premiscale.selectorLabels" . | nindent 4 }}
+{{- end }}

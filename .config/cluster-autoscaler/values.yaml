@@ -1,0 +1,31 @@
+# Merge with your controller configuration and persistent storage values.
+# Create ConfigMap premiscale-externalgrpc with key cloud-config.yaml first.
+cluster-autoscaler:
+  enabled: true
+  cloudProvider: externalgrpc
+  # Required to render the upstream Deployment; group discovery uses gRPC.
+  autoDiscovery:
+    clusterName: premiscale
+  extraArgs:
+    cloud-config: /etc/autoscaler/cloud-config.yaml
+  extraVolumes:
+    - name: externalgrpc
+      configMap:
+        name: premiscale-externalgrpc
+  extraVolumeMounts:
+    - name: externalgrpc
+      mountPath: /etc/autoscaler
+      readOnly: true
+
+deployment:
+  extraPorts:
+    - name: autoscaler-grpc
+      containerPort: 50051
+      protocol: TCP
+
+service:
+  ports:
+    autoscaler-grpc:
+      port: 50051
+      targetPort: 50051
+      protocol: TCP

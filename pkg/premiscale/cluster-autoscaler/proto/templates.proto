@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package premiscale.clusterautoscaler.v1;
+
+option go_package = "github.com/premiscale/premiscale/cluster-autoscaler/protocol";
+
+// Native Go code marshals Kubernetes Node objects for autoscaler's simulator.
+service Templates {
+  rpc Get(TemplateRequest) returns (TemplateResponse) {}
+}
+
+message TemplateRequest { string id = 1; }
+
+message Taint {
+  string key = 1;
+  string value = 2;
+  string effect = 3;
+}
+
+message TemplateResponse {
+  map<string, string> labels = 1;
+  map<string, string> capacity = 2;
+  map<string, string> allocatable = 3;
+  repeated Taint taints = 4;
+}

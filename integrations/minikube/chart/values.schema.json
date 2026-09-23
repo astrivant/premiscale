@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "providerStorage": {
+      "type": "object",
+      "properties": {
+        "size": {"$ref": "#/definitions/storage"},
+        "storageClassName": {"$ref": "#/definitions/storageClass"}
+      },
+      "required": ["size", "storageClassName"]
+    },
+    "premiscale": {"type": "object"}
+  },
+  "definitions": {
+    "storage": {"type": "string", "pattern": "^[1-9][0-9]*(Mi|Gi)$"},
+    "storageClass": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 253,
+      "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"
+    }
+  }
+}

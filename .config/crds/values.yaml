@@ -1,0 +1,68 @@
+configMap:
+  source: crds
+  controllerConfig: main
+premiscale-crds:
+  controllerConfigs:
+    main:
+      spec:
+        pidFile: /opt/premiscale/premiscale.pid
+        mode: kubernetes
+        broker:
+          leaseSeconds: 60
+          blockMilliseconds: 1000
+          connectTimeout: 5
+          socketTimeout: 5
+          caFile: ''
+        kubernetes:
+          autoscalerPort: 8085
+          autoscalerHost: cluster-autoscaler
+          providerHost: 0.0.0.0
+          providerPort: 50051
+          clusterName: premiscale
+          stateFile: /opt/premiscale/autoscaler.db
+          stateDsn: ''
+          providerCert: ''
+          providerKey: ''
+          clientCA: ''
+        healthcheck:
+          host: 0.0.0.0
+          port: 8085
+          apiPort: 9090
+          stateDirectory: /run/premiscale
+        databases:
+          maxHostConnectionThreads: 10
+          collectionInterval: 60
+          hostConnectionTimeout: 60
+          state:
+            type: memory
+          timeseries:
+            type: memory
+            retention: 300
+          publishers: {}
+        platform:
+          actionsQueueMaxSize: 0
+          domain: $PREMISCALE_PLATFORM
+          token: $PREMISCALE_TOKEN
+          certificates:
+            path: $PREMISCALE_CACERT
+        reconciliation:
+          interval: 60
+          collection:
+            minThreads: 1
+            initialThreads: 1
+            proportionalGain: 1.0
+            integralGain: 0.1
+            derivativeGain: 0.05
+            smoothing: 0.3
+            deadband: 0.1
+            maxStep: 2
+        autoscale:
+          hosts: []
+          groups: []
+        kafka:
+          enabled: false
+          bootstrapServers: ''
+          topic: premiscale.metrics
+          options: {}
+  hosts: {}
+  autoscalingGroups: {}

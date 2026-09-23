@@ -1,0 +1,11 @@
+yaml_parser: ruamel
+resource_schemas:
+  premiscale.com/v1alpha1/ControllerConfig: charts/premiscale-crds/schemas/ControllerConfig.json
+  premiscale.com/v1alpha1/Host: charts/premiscale-crds/schemas/Host.json
+  premiscale.com/v1alpha1/AutoscalingGroup: charts/premiscale-crds/schemas/AutoscalingGroup.json
+input_constraints:
+  - charts: [premiscale-crds]
+    path: $
+    # The default installation contains CRDs only. Helm's normal template output
+    # omits crds/; deterministic tests also render with --include-crds.
+    ignored: [HH1107]

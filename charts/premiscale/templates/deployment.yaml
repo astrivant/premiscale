@@ -1,0 +1,206 @@
+{{- if ne .Values.mode "singular" }}
+{{- include "premiscale.validateWorkers" . }}
+{{- else if .Values.autoscaling.enabled }}
+{{- fail "KEDA requires mode ha or hha" }}
+{{- else if ne (int (.Values.deployment.replicas | default 1)) 1 }}
+{{- fail "singular mode requires one replica" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ default .Values.deployment.name .Chart.Name }}
+  namespace: {{ .Values.global.namespace | default .Release.Namespace }}
+  {{- with .Values.deployment.labels }}
+  labels:
+    {{- range $k, $v := . }}
+    {{ $k }}: {{ $v }}
+    {{- end }}
+  {{- end }}
+  {{- $annotations := mergeOverwrite (deepCopy .Values.deployment.annotations) (include "premiscale.reloadAnnotations" . | fromYaml | default dict) }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ## DeploymentSpec v1 core
+  {{- if not (and (eq .Values.mode "ha") .Values.autoscaling.enabled) }}
+  replicas: {{ ternary 1 .Values.autoscaling.controller.minReplicaCount (eq .Values.mode "singular") }}
+  {{- end }}
+  strategy:
+    {{- if ne .Values.mode "singular" }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.rollouts.controller.maxSurge }}
+      maxUnavailable: {{ .Values.rollouts.controller.maxUnavailable }}
+    {{- else }}
+    type: {{ .Values.deployment.strategy.type }}
+    {{- end }}
+  minReadySeconds: {{ .Values.rollouts.controller.minReadySeconds }}
+  revisionHistoryLimit: 1
+  # Select which pods (by label) this Deployment spec is targeting.
+  selector:
+    matchLabels: {{ include "premiscale.selectorLabels" . | nindent 6 }}
+  template:
+    ## PodTemplateSpec v1 core
+    metadata:
+      {{- if or .Values.deployment.podAnnotations .Values.configMap.enabled }}
+      annotations:
+        {{- if .Values.configMap.enabled }}
+        checksum/config: {{ include "premiscale.runtimeConfig" . | sha256sum | quote }}
+        {{- end }}
+        {{- with .Values.deployment.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      labels: {{ include "premiscale.selectorLabels" . | nindent 8 }}
+    spec:
+      ## PodSpec v1core
+      {{- $labels := include "premiscale.selectorLabels" . | fromYaml }}
+      {{- include "premiscale.scheduling" (dict "settings" .Values.scheduling.controller "labels" $labels "peers" $labels "separateNodes" (and (ne .Values.mode "singular") .Values.scheduling.controller.separateNodes)) | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.deployment.terminationGracePeriodSeconds }}
+      {{- if gt (len (((((.Values).deployment).image).pullSecrets) | default "")) 0 }}
+      imagePullSecrets:
+        {{- range $secret := .Values.deployment.image.pullSecrets }}
+        - name: {{ $secret }}
+        {{- end }}
+      {{- else if gt (len (((((.Values).global).image).pullSecrets) | default "")) 0 }}
+      imagePullSecrets:
+        {{- range $secret := .Values.global.image.pullSecrets }}
+        - name: {{ $secret }}
+        {{- end }}
+      {{- end }}
+      {{- if or .Values.serviceAccount.create .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name | default .Chart.Name | quote }}
+      {{- end }}
+      {{- with .Values.deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        ## Container v1 core (array)
+        - name: {{ default .Values.deployment.name .Chart.Name }}
+          command: {{ .Values.deployment.command | toJson }}
+          args: [
+            --log-stdout,
+            --log-level, {{ .Values.controller.logging.level }}
+          ]
+          ports:
+            - name: healthcheck
+              containerPort: {{ dig "controller" "healthcheck" "port" 8085 (include "premiscale.runtimeConfig" . | fromYaml) }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ include "premiscale.apiPort" . }}
+              protocol: TCP
+            {{- with .Values.deployment.extraPorts }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: PREMISCALE_PUBLISHER_CONNECTIONS
+              value: {{ .Values.controller.publisherConnections | quote }}
+            {{- if eq .Values.configMap.source "crds" }}
+            - name: PREMISCALE_CONTROLLER_CONFIG
+              value: {{ .Values.configMap.controllerConfig | quote }}
+            - name: PREMISCALE_PROJECTED_CONFIGMAP
+              value: {{ include "premiscale.configMapName" . | quote }}
+            {{- end }}
+            - name: PREMISCALE_DEPLOYMENT_MODE
+              value: {{ .Values.mode | quote }}
+            {{- if ne .Values.mode "singular" }}
+            - name: PREMISCALE_LEASE_NAME
+              value: {{ include "premiscale.leaseName" . | quote }}
+            - name: PREMISCALE_KAFKA_GROUP_PREFIX
+              value: {{ printf "%s.%s" (.Values.global.namespace | default .Release.Namespace) .Release.Name | quote }}
+            - name: PREMISCALE_REMOTE_PUBLISHERS
+              value: {{ keys .Values.autoscaling.publishers | sortAlpha | join "," | quote }}
+            {{- $limits := dict }}
+            {{- range $name, $settings := .Values.autoscaling.publishers }}
+            {{- $_ := set $limits $name ($settings.connectionsPerReplica | default $.Values.autoscaling.publisherDefaults.connectionsPerReplica) }}
+            {{- end }}
+            - name: PREMISCALE_PUBLISHER_LIMITS
+              value: {{ $limits | toJson | quote }}
+            {{- end }}
+            - name: PREMISCALE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: PREMISCALE_STATE_DIRECTORY
+              value: {{ dig "controller" "healthcheck" "stateDirectory" "/run/premiscale" (include "premiscale.runtimeConfig" . | fromYaml) | quote }}
+            - name: CONTROLLER_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONTROLLER_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PREMISCALE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  optional: true
+                  key: {{ .Values.controller.registration.key }}
+                  name: {{ .Values.controller.registration.secretName }}
+            - name: PREMISCALE_PLATFORM
+              value: {{ .Values.controller.platform.domain }}
+            - name: PREMISCALE_CACERT
+              value: {{ .Values.controller.platform.certificates.path | quote }}
+            - name: PREMISCALE_CONFIG_PATH
+              value: {{ .Values.controller.config.mountPath | quote }}
+            - name: PREMISCALE_QUEUE_NAMESPACE
+              value: {{ .Values.controller.broker.namespace | default (printf "%s:%s" .Release.Namespace .Release.Name) | quote }}
+            - name: PREMISCALE_REDIS_URL
+              {{- if .Values.controller.broker.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controller.broker.existingSecret | quote }}
+                  key: {{ .Values.controller.broker.secretKey | quote }}
+              {{- else }}
+              value: {{ include "premiscale.brokerUrl" . | quote }}
+              {{- end }}
+            # - name: CONTROLLER_HOST_SSH_PRIVATE_KEY
+            #   {{- with .Values.controller.ssh }}
+            #     {{- if .createSecret }}
+            #   valueFrom:
+            #     secretKeyRef:
+            #       key: ssh-privatekey
+            #       name: {{ .name }}
+            #     {{- else }}
+            #   value: {{ .value }}
+            #     {{- end }}
+            #   {{- end }}
+            {{- with .Values.controller.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.deployment.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ include "premiscale.image" . | quote }}
+          imagePullPolicy: {{ .Values.deployment.image.pullPolicy | default "Always" }}
+          volumeMounts:
+            - name: runtime-status
+              mountPath: {{ dig "controller" "healthcheck" "stateDirectory" "/run/premiscale" (include "premiscale.runtimeConfig" . | fromYaml) | quote }}
+            {{- if .Values.configMap.enabled }}
+            - name: config
+              mountPath: {{ .Values.controller.config.mountPath | quote }}
+              subPath: config.yaml
+              readOnly: true
+            {{- end }}
+            {{- with .Values.deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- include "premiscale.probes" (dict "root" . "metricsOnly" (ne .Values.mode "singular")) | nindent 10 }}
+          {{- with .Values.deployment.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: runtime-status
+          emptyDir: {}
+        {{- if .Values.configMap.enabled }}
+        - name: config
+          configMap:
+            name: {{ include "premiscale.configMapName" . }}
+        {{- end }}
+        {{- with .Values.deployment.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

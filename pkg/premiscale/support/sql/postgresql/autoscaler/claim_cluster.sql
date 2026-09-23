@@ -1,0 +1,3 @@
+INSERT INTO metadata
+VALUES ('cluster', %s)
+ON CONFLICT DO NOTHING;

@@ -1,0 +1,26 @@
+## @section Resource metadata
+
+## @param global [object] Parent-chart values; global.namespace supplies the default custom-resource namespace.
+global: {}
+
+## @param commonLabels [object] Labels added to every custom resource; individual resource labels override them.
+commonLabels: {}
+
+## @param commonAnnotations [object] Annotations added to every custom resource; individual annotations override them.
+commonAnnotations: {}
+
+## @section Configuration resources
+
+# Each map key becomes metadata.name. Entries contain spec and optionally
+# namespace, labels, and annotations. Resources default to the release namespace.
+# Empty maps install the CRDs without creating custom resource instances.
+# See examples/multiple-resources.yaml for two instances of every kind.
+
+## @param controllerConfigs [object] Named ControllerConfig resources with controller settings and host/group references.
+controllerConfigs: {}
+
+## @param hosts [object] Named Host resources describing hypervisor connections.
+hosts: {}
+
+## @param autoscalingGroups [object] Named AutoscalingGroup resources describing VM templates and scaling policies.
+autoscalingGroups: {}

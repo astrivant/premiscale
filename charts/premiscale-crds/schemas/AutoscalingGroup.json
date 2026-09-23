@@ -1,0 +1,352 @@
+{
+  "type": "object",
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "premiscale.com/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "AutoscalingGroup"
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Existing libvirt template domain name; independent of this resource metadata.name."
+        },
+        "imageMigration": {
+          "type": "string",
+          "enum": [
+            "migrate",
+            "centralized"
+          ]
+        },
+        "cloud-init": {
+          "type": "object",
+          "properties": {
+            "inline": {
+              "type": "string"
+            },
+            "file": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "description": "Names of Host resources in the same namespace.",
+          "uniqueItems": true
+        },
+        "nodeLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "nodeTaints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": "string"
+              },
+              "effect": {
+                "type": "string",
+                "enum": [
+                  "NoSchedule",
+                  "PreferNoSchedule",
+                  "NoExecute"
+                ]
+              }
+            },
+            "required": [
+              "key",
+              "effect"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "maxPods": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "replacement": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "rollingUpdate"
+              ]
+            },
+            "maxUnavailable": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxSurge": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "strategy",
+            "maxUnavailable",
+            "maxSurge"
+          ],
+          "additionalProperties": false
+        },
+        "networking": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "static",
+                "dynamic",
+                "ignore"
+              ]
+            },
+            "addresses": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            },
+            "subnet": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gateway": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "addresses",
+            "subnet",
+            "gateway"
+          ],
+          "additionalProperties": false
+        },
+        "scaling": {
+          "type": "object",
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": [
+                "random",
+                "vacancy",
+                "linear",
+                "linear-random"
+              ]
+            },
+            "maxNodes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minNodes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "increment": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cooldown": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "resourceTarget": {
+              "type": "object",
+              "properties": {
+                "cpu": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "memory": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "storage": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "cpu",
+                "memory",
+                "storage"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "method",
+            "maxNodes",
+            "minNodes",
+            "increment",
+            "cooldown",
+            "resourceTarget"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "image",
+        "name",
+        "imageMigration",
+        "cloud-init",
+        "hosts",
+        "replacement",
+        "networking",
+        "scaling"
+      ],
+      "additionalProperties": false
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "observedGeneration": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "lastObservationTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "targetReplicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runningReplicas": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "VMs with successful provider operations; this does not assert Kubernetes Node readiness."
+        },
+        "pendingReplicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deletingReplicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedReplicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "status",
+              "reason",
+              "message",
+              "lastTransitionTime",
+              "observedGeneration"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string"
+              },
+              "observedGeneration": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "lastTransitionTime": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AutoscalingGroup"
+}
