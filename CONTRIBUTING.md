@@ -32,7 +32,7 @@ poetry run pre-commit run --all-files
 
 Pre-commit checks typed Google docstrings, generated configuration schemas, controller examples, the Poetry lockfile, Pylint, mypy, ShellCheck, and shell formatting. Local Python checks use `scripts/validation/python.sh` to select the `premiscale` pyenv environment even when Git inherits a different active environment from your shell or editor. When that environment is unavailable, the runner uses `poetry run python`, including in CI. Install the locked dependencies with `poetry install` after activating `premiscale`; hooks do not install dependencies automatically. ShellCheck and shfmt come from the Brewfile. Pre-commit downloads isolated Python and Node environments for the pinned documentation tools on its first run. The Helm README hooks regenerate the `Parameters` tables in both charts, so review and stage those updates before committing. Keep handwritten chart documentation outside that generated section. To fix shell formatting, run `shfmt -w -i 4 -ci -sr` with the affected script paths.
 
-The [CI workflow](.github/workflows/ci.yml) combines Python tests and checks, ShellCheck, the container build, Helm validation with hypothesis-helm, Go/gRPC integration tests, and documentation into one run. It runs on pull requests and pushes to `master`, and also supports manual and reusable invocations. Documentation generation runs as a build check.
+The [CI workflow](.github/workflows/ci.yml) resolves one source commit and calls parallel reusable [test](.github/workflows/stage-test.yml) and [build](.github/workflows/stage-build.yml) stages within one run. The test stage covers Python tests and packaging, Python checks, ShellCheck, and Go/gRPC integration; the build stage covers the development container, Helm validation with hypothesis-helm, and documentation. The final `CI verification` check requires both stages to pass. It runs on pull requests and pushes to `master`, and also supports manual and reusable invocations. Documentation generation runs as a build check.
 
 Install [asdf](https://asdf-vm.com/guide/getting-started.html#_1-install-dependencies), followed by running `asdf install` in the root of this project.
 
@@ -194,7 +194,7 @@ poetry run python scripts/validation/check-docstrings.py pkg scripts integration
 poetry run pydoclint --config=pyproject.toml pkg scripts integrations
 ```
 
-GitHub Actions runs Python 3.14 unit tests, configuration schema validation, mypy, Pylint, ShellCheck, package builds, and development-container checks on pull requests and pushes to `master`. The reusable Helm workflow builds locked chart dependencies, lints each chart, and runs `astrivant/hypothesis-helm` against `charts/`, uploading its reports even when a chart fails validation.
+GitHub Actions runs Python 3.14 unit tests, configuration schema validation, mypy, Pylint, ShellCheck, package builds, and development-container checks on pull requests and pushes to `master`. The reusable build stage builds locked chart dependencies, lints each chart, and runs `astrivant/hypothesis-helm` against `charts/`, uploading its reports even when a chart fails validation.
 
 Run [unit tests](./pkg/tests/unit/) with
 

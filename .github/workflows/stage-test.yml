@@ -1,0 +1,188 @@
+name: Test stage
+
+# Called by ci.yml so all checks stay inside one pipeline run.
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Immutable source commit resolved by the entry workflow
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python tests and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      kafka:
+        image: apache/kafka:4.3.1
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:19094,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: INTERNAL://localhost:9092,EXTERNAL://127.0.0.1:19094
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        ports:
+          - 19094:19094
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: premiscale_test
+          POSTGRES_USER: premiscale_test
+          POSTGRES_PASSWORD: premiscale_test
+        ports:
+          - 5432:5432
+        options: --health-cmd "pg_isready -U premiscale_test" --health-interval 5s --health-timeout 5s --health-retries 10
+      dragonfly:
+        image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.0
+        ports:
+          - 6379:6379
+        options: --ulimit memlock=-1
+    env:
+      PREMISCALE_TEST_KAFKA_BOOTSTRAP_SERVERS: 127.0.0.1:19094
+      PREMISCALE_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      PREMISCALE_TEST_POSTGRES_DSN: postgresql://premiscale_test:premiscale_test@127.0.0.1:5432/premiscale_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v4.3.0
+      - name: Check dependency lock
+        run: poetry check --lock
+      - name: Check generated configuration schemas
+        run: poetry run python scripts/schemas/generate-config-schemas.py --check
+      - name: Validate configuration examples
+        run: >-
+          poetry run python scripts/validation/check-config.py
+          pkg/premiscale/config/default.yaml pkg/tests/data/config/*.yaml .config/minikube/controller.yaml .config/keda/controller.yaml
+      - name: Run unit tests
+        # Broker rendering tests exercise both the parent and Minikube dependency trees.
+        # Rendering builds their locked dependencies without contacting a cluster.
+        run: |
+          ./integrations/minikube/minikube.sh render > "$RUNNER_TEMP/premiscale-minikube.yaml"
+          poetry run pytest -q --junitxml=reports/pytest.xml
+      - name: Build distributions
+        run: poetry build
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-results
+          path: reports/pytest.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  python-checks:
+    name: Python ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [mypy, pylint, docstrings]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+      - name: Check types
+        if: matrix.check == 'mypy'
+        run: poetry run mypy --config-file pyproject.toml pkg
+      - name: Lint Python
+        if: matrix.check == 'pylint'
+        run: poetry run pylint --rcfile=pyproject.toml pkg
+      - name: Check typed Google docstrings
+        if: matrix.check == 'docstrings'
+        run: |
+          poetry run python scripts/validation/check-docstrings.py pkg scripts integrations
+          poetry run pydoclint --config=pyproject.toml pkg scripts integrations
+
+  shell:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: Check shell scripts
+        run: git ls-files -z '*.sh' | xargs -0 -r shellcheck --external-sources
+
+  cluster-autoscaler:
+    name: Cluster Autoscaler Go and Python integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pkg/premiscale/cluster-autoscaler/go.mod
+          cache-dependency-path: pkg/premiscale/cluster-autoscaler/go.sum
+      - name: Check generated gRPC bindings
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.8
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+          PATH="$(go env GOPATH)/bin:$PATH"
+          export PATH
+          poetry run bash scripts/generate-autoscaler-protos.sh
+          git diff --exit-code -- pkg/premiscale/cluster-autoscaler/protocol pkg/premiscale/cluster-autoscaler/integrations/python/premiscale_cluster_autoscaler/protos
+      - name: Test and build the native provider
+        working-directory: pkg/premiscale/cluster-autoscaler
+        run: |
+          go test -race ./...
+          go vet ./...
+          go build -mod=readonly -o "$RUNNER_TEMP/premiscale-autoscaler" ./cmd/premiscale-autoscaler
+      - name: Exercise Go and Python gRPC together
+        env:
+          PREMISCALE_AUTOSCALER_BINARY: ${{ runner.temp }}/premiscale-autoscaler
+        run: poetry run pytest -q
+
+  test-complete:
+    name: Require complete test stage
+    if: always()
+    needs: [python, python-checks, shell, cluster-autoscaler]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject failed, cancelled or unexpectedly skipped checks
+        env:
+          RESULTS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+
+          failures = {
+              name: result['result']
+              for name, result in json.loads(os.environ['RESULTS_JSON']).items()
+              if result['result'] != 'success'
+          }
+          if failures:
+              raise SystemExit(f'Pipeline checks did not pass: {failures}')
+          print('Every required stage check passed.')
+          PYTHON
